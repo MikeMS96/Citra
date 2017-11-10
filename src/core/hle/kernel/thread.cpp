@@ -246,7 +246,8 @@ static void ThreadWakeupCallback(u64 thread_handle, int cycles_late) {
     }
 
     if (thread->status == THREADSTATUS_WAIT_SYNCH_ANY ||
-        thread->status == THREADSTATUS_WAIT_SYNCH_ALL || thread->status == THREADSTATUS_WAIT_ARB) {
+        thread->status == THREADSTATUS_WAIT_SYNCH_ALL || thread->status == THREADSTATUS_WAIT_ARB ||
+        thread->status == THREADSTATUS_WAIT_HLE_EVENT) {
 
         // Invoke the wakeup callback before clearing the wait objects
         if (thread->wakeup_callback)
@@ -276,6 +277,7 @@ void Thread::ResumeFromWait() {
     switch (status) {
     case THREADSTATUS_WAIT_SYNCH_ALL:
     case THREADSTATUS_WAIT_SYNCH_ANY:
+    case THREADSTATUS_WAIT_HLE_EVENT:
     case THREADSTATUS_WAIT_ARB:
     case THREADSTATUS_WAIT_SLEEP:
     case THREADSTATUS_WAIT_IPC:
