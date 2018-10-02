@@ -11,8 +11,7 @@
 #include "common/swap.h"
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
 using MacAddress = std::array<u8, 6>;
 constexpr std::array<u8, 3> NintendoOUI = {0x00, 0x1F, 0x32};
@@ -127,7 +126,7 @@ static_assert(sizeof(BeaconData) == 0x12, "BeaconData has incorrect size.");
 /**
  * Decrypts the beacon data buffer for the network described by `network_info`.
  */
-void DecryptBeaconData(const NetworkInfo& network_info, std::vector<u8>& buffer);
+void DecryptBeacon(const NetworkInfo& network_info, std::vector<u8>& buffer);
 
 /**
  * Generates an 802.11 beacon frame starting at the management frame header.
@@ -136,5 +135,4 @@ void DecryptBeaconData(const NetworkInfo& network_info, std::vector<u8>& buffer)
  */
 std::vector<u8> GenerateBeaconFrame(const NetworkInfo& network_info, const NodeList& nodes);
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

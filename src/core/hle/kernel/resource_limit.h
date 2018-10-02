@@ -5,7 +5,7 @@
 #pragma once
 
 #include "common/common_types.h"
-#include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/object.h"
 
 namespace Kernel {
 
@@ -123,4 +123,4 @@ void ResourceLimitsInit();
 // Destroys the resource limits
 void ResourceLimitsShutdown();
 
-} // namespace
+} // namespace Kernel

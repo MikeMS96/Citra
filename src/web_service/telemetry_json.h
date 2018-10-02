@@ -6,8 +6,9 @@
 
 #include <array>
 #include <string>
-#include <json.hpp>
+#include "common/announce_multiplayer_room.h"
 #include "common/telemetry.h"
+#include "web_service/json.h"
 
 namespace WebService {
 
@@ -17,9 +18,8 @@ namespace WebService {
  */
 class TelemetryJson : public Telemetry::VisitorInterface {
 public:
-    TelemetryJson(const std::string& endpoint_url, const std::string& username,
-                  const std::string& token)
-        : endpoint_url(endpoint_url), username(username), token(token) {}
+    TelemetryJson(const std::string& host, const std::string& username, const std::string& token)
+        : host(host), username(username), token(token) {}
     ~TelemetryJson() = default;
 
     void Visit(const Telemetry::Field<bool>& field) override;
@@ -51,7 +51,7 @@ private:
 
     nlohmann::json output;
     std::array<nlohmann::json, 7> sections;
-    std::string endpoint_url;
+    std::string host;
     std::string username;
     std::string token;
 };

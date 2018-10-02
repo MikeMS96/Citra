@@ -2,16 +2,13 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <algorithm>
 #include <cstddef>
-
-#include "audio_core/hle/common.h"
-#include "audio_core/hle/dsp.h"
 #include "audio_core/hle/mixers.h"
 #include "common/assert.h"
 #include "common/logging/log.h"
-#include "common/math_util.h"
 
-namespace DSP {
+namespace AudioCore {
 namespace HLE {
 
 void Mixers::Reset() {
@@ -40,56 +37,56 @@ void Mixers::ParseConfig(DspConfiguration& config) {
     if (config.mixer1_enabled_dirty) {
         config.mixer1_enabled_dirty.Assign(0);
         state.mixer1_enabled = config.mixer1_enabled != 0;
-        LOG_TRACE(Audio_DSP, "mixers mixer1_enabled = %hu", config.mixer1_enabled);
+        LOG_TRACE(Audio_DSP, "mixers mixer1_enabled = {}", config.mixer1_enabled);
     }
 
     if (config.mixer2_enabled_dirty) {
         config.mixer2_enabled_dirty.Assign(0);
         state.mixer2_enabled = config.mixer2_enabled != 0;
-        LOG_TRACE(Audio_DSP, "mixers mixer2_enabled = %hu", config.mixer2_enabled);
+        LOG_TRACE(Audio_DSP, "mixers mixer2_enabled = {}", config.mixer2_enabled);
     }
 
     if (config.volume_0_dirty) {
         config.volume_0_dirty.Assign(0);
         state.intermediate_mixer_volume[0] = config.volume[0];
-        LOG_TRACE(Audio_DSP, "mixers volume[0] = %f", config.volume[0]);
+        LOG_TRACE(Audio_DSP, "mixers volume[0] = {}", config.volume[0]);
     }
 
     if (config.volume_1_dirty) {
         config.volume_1_dirty.Assign(0);
         state.intermediate_mixer_volume[1] = config.volume[1];
-        LOG_TRACE(Audio_DSP, "mixers volume[1] = %f", config.volume[1]);
+        LOG_TRACE(Audio_DSP, "mixers volume[1] = {}", config.volume[1]);
     }
 
     if (config.volume_2_dirty) {
         config.volume_2_dirty.Assign(0);
         state.intermediate_mixer_volume[2] = config.volume[2];
-        LOG_TRACE(Audio_DSP, "mixers volume[2] = %f", config.volume[2]);
+        LOG_TRACE(Audio_DSP, "mixers volume[2] = {}", config.volume[2]);
     }
 
     if (config.output_format_dirty) {
         config.output_format_dirty.Assign(0);
         state.output_format = config.output_format;
-        LOG_TRACE(Audio_DSP, "mixers output_format = %zu",
-                  static_cast<size_t>(config.output_format));
+        LOG_TRACE(Audio_DSP, "mixers output_format = {}",
+                  static_cast<std::size_t>(config.output_format));
     }
 
     if (config.headphones_connected_dirty) {
         config.headphones_connected_dirty.Assign(0);
         // Do nothing. (Note: Whether headphones are connected does affect coefficients used for
         // surround sound.)
-        LOG_TRACE(Audio_DSP, "mixers headphones_connected=%hu", config.headphones_connected);
+        LOG_TRACE(Audio_DSP, "mixers headphones_connected={}", config.headphones_connected);
     }
 
     if (config.dirty_raw) {
-        LOG_DEBUG(Audio_DSP, "mixers remaining_dirty=%x", config.dirty_raw);
+        LOG_DEBUG(Audio_DSP, "mixers remaining_dirty={:x}", config.dirty_raw);
     }
 
     config.dirty_raw = 0;
 }
 
 static s16 ClampToS16(s32 value) {
-    return static_cast<s16>(MathUtil::Clamp(value, -32768, 32767));
+    return static_cast<s16>(std::clamp(value, -32768, 32767));
 }
 
 static std::array<s16, 2> AddAndClampToS16(const std::array<s16, 2>& a,
@@ -117,8 +114,8 @@ void Mixers::DownmixAndMixIntoCurrentFrame(float gain, const QuadFrame32& sample
         return;
 
     case OutputFormat::Surround:
-    // TODO(merry): Implement surround sound.
-    // fallthrough
+        // TODO(merry): Implement surround sound.
+        // fallthrough
 
     case OutputFormat::Stereo:
         std::transform(
@@ -134,7 +131,7 @@ void Mixers::DownmixAndMixIntoCurrentFrame(float gain, const QuadFrame32& sample
         return;
     }
 
-    UNREACHABLE_MSG("Invalid output_format %zu", static_cast<size_t>(state.output_format));
+    UNREACHABLE_MSG("Invalid output_format {}", static_cast<std::size_t>(state.output_format));
 }
 
 void Mixers::AuxReturn(const IntermediateMixSamples& read_samples) {
@@ -142,8 +139,8 @@ void Mixers::AuxReturn(const IntermediateMixSamples& read_samples) {
     // QuadFrame32.
 
     if (state.mixer1_enabled) {
-        for (size_t sample = 0; sample < samples_per_frame; sample++) {
-            for (size_t channel = 0; channel < 4; channel++) {
+        for (std::size_t sample = 0; sample < samples_per_frame; sample++) {
+            for (std::size_t channel = 0; channel < 4; channel++) {
                 state.intermediate_mix_buffer[1][sample][channel] =
                     read_samples.mix1.pcm32[channel][sample];
             }
@@ -151,8 +148,8 @@ void Mixers::AuxReturn(const IntermediateMixSamples& read_samples) {
     }
 
     if (state.mixer2_enabled) {
-        for (size_t sample = 0; sample < samples_per_frame; sample++) {
-            for (size_t channel = 0; channel < 4; channel++) {
+        for (std::size_t sample = 0; sample < samples_per_frame; sample++) {
+            for (std::size_t channel = 0; channel < 4; channel++) {
                 state.intermediate_mix_buffer[2][sample][channel] =
                     read_samples.mix2.pcm32[channel][sample];
             }
@@ -168,8 +165,8 @@ void Mixers::AuxSend(IntermediateMixSamples& write_samples,
     state.intermediate_mix_buffer[0] = input[0];
 
     if (state.mixer1_enabled) {
-        for (size_t sample = 0; sample < samples_per_frame; sample++) {
-            for (size_t channel = 0; channel < 4; channel++) {
+        for (std::size_t sample = 0; sample < samples_per_frame; sample++) {
+            for (std::size_t channel = 0; channel < 4; channel++) {
                 write_samples.mix1.pcm32[channel][sample] = input[1][sample][channel];
             }
         }
@@ -178,8 +175,8 @@ void Mixers::AuxSend(IntermediateMixSamples& write_samples,
     }
 
     if (state.mixer2_enabled) {
-        for (size_t sample = 0; sample < samples_per_frame; sample++) {
-            for (size_t channel = 0; channel < 4; channel++) {
+        for (std::size_t sample = 0; sample < samples_per_frame; sample++) {
+            for (std::size_t channel = 0; channel < 4; channel++) {
                 write_samples.mix2.pcm32[channel][sample] = input[2][sample][channel];
             }
         }
@@ -191,7 +188,7 @@ void Mixers::AuxSend(IntermediateMixSamples& write_samples,
 void Mixers::MixCurrentFrame() {
     current_frame.fill({});
 
-    for (size_t mix = 0; mix < 3; mix++) {
+    for (std::size_t mix = 0; mix < 3; mix++) {
         DownmixAndMixIntoCurrentFrame(state.intermediate_mixer_volume[mix],
                                       state.intermediate_mix_buffer[mix]);
     }
@@ -207,4 +204,4 @@ DspStatus Mixers::GetCurrentStatus() const {
 }
 
 } // namespace HLE
-} // namespace DSP
+} // namespace AudioCore

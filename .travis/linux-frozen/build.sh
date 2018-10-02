@@ -1,4 +1,4 @@
 #!/bin/bash -ex
-
-docker pull ubuntu:16.04
-docker run -v $(pwd):/citra ubuntu:16.04 /bin/bash -ex /citra/.travis/linux-frozen/docker.sh
+mkdir -p "$HOME/.ccache"
+docker pull citraemu/build-environments:linux-frozen
+docker run --env-file .travis/common/travis-ci.env -v $(pwd):/citra -v "$HOME/.ccache":/root/.ccache citraemu/build-environments:linux-frozen /bin/bash -ex /citra/.travis/linux-frozen/docker.sh

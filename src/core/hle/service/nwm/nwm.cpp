@@ -11,18 +11,16 @@
 #include "core/hle/service/nwm/nwm_tst.h"
 #include "core/hle/service/nwm/nwm_uds.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
-void Init() {
-    AddService(new NWM_CEC);
-    AddService(new NWM_EXT);
-    AddService(new NWM_INF);
-    AddService(new NWM_SAP);
-    AddService(new NWM_SOC);
-    AddService(new NWM_TST);
-    AddService(new NWM_UDS);
+void InstallInterfaces(SM::ServiceManager& service_manager) {
+    std::make_shared<NWM_CEC>()->InstallAsService(service_manager);
+    std::make_shared<NWM_EXT>()->InstallAsService(service_manager);
+    std::make_shared<NWM_INF>()->InstallAsService(service_manager);
+    std::make_shared<NWM_SAP>()->InstallAsService(service_manager);
+    std::make_shared<NWM_SOC>()->InstallAsService(service_manager);
+    std::make_shared<NWM_TST>()->InstallAsService(service_manager);
+    std::make_shared<NWM_UDS>()->InstallAsService(service_manager);
 }
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

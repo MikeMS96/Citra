@@ -4,10 +4,10 @@
 
 #pragma once
 
-#include <queue>
 #include <string>
+#include <queue>
 #include "common/common_types.h"
-#include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/object.h"
 #include "core/hle/kernel/wait_object.h"
 #include "core/hle/result.h"
 
@@ -56,4 +56,4 @@ private:
     ~Semaphore() override;
 };
 
-} // namespace
+} // namespace Kernel

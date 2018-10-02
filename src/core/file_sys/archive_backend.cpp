@@ -12,23 +12,22 @@
 
 namespace FileSys {
 
-Path::Path(LowPathType type, u32 size, u32 pointer) : type(type) {
+Path::Path(LowPathType type, const std::vector<u8>& data) : type(type) {
     switch (type) {
-    case Binary: {
-        binary.resize(size);
-        Memory::ReadBlock(pointer, binary.data(), binary.size());
+    case LowPathType::Binary: {
+        binary = data;
         break;
     }
 
-    case Char: {
-        string.resize(size - 1); // Data is always null-terminated.
-        Memory::ReadBlock(pointer, &string[0], string.size());
+    case LowPathType::Char: {
+        string.resize(data.size() - 1); // Data is always null-terminated.
+        std::memcpy(string.data(), data.data(), string.size());
         break;
     }
 
-    case Wchar: {
-        u16str.resize(size / 2 - 1); // Data is always null-terminated.
-        Memory::ReadBlock(pointer, &u16str[0], u16str.size() * sizeof(char16_t));
+    case LowPathType::Wchar: {
+        u16str.resize(data.size() / 2 - 1); // Data is always null-terminated.
+        std::memcpy(u16str.data(), data.data(), u16str.size() * sizeof(char16_t));
         break;
     }
 
@@ -39,12 +38,12 @@ Path::Path(LowPathType type, u32 size, u32 pointer) : type(type) {
 
 std::string Path::DebugStr() const {
     switch (GetType()) {
-    case Invalid:
+    case LowPathType::Invalid:
     default:
         return "[Invalid]";
-    case Empty:
+    case LowPathType::Empty:
         return "[Empty]";
-    case Binary: {
+    case LowPathType::Binary: {
         std::stringstream res;
         res << "[Binary: ";
         for (unsigned byte : binary)
@@ -52,23 +51,23 @@ std::string Path::DebugStr() const {
         res << ']';
         return res.str();
     }
-    case Char:
+    case LowPathType::Char:
         return "[Char: " + AsString() + ']';
-    case Wchar:
+    case LowPathType::Wchar:
         return "[Wchar: " + AsString() + ']';
     }
 }
 
 std::string Path::AsString() const {
     switch (GetType()) {
-    case Char:
+    case LowPathType::Char:
         return string;
-    case Wchar:
+    case LowPathType::Wchar:
         return Common::UTF16ToUTF8(u16str);
-    case Empty:
+    case LowPathType::Empty:
         return {};
-    case Invalid:
-    case Binary:
+    case LowPathType::Invalid:
+    case LowPathType::Binary:
     default:
         // TODO(yuriks): Add assert
         LOG_ERROR(Service_FS, "LowPathType cannot be converted to string!");
@@ -78,14 +77,14 @@ std::string Path::AsString() const {
 
 std::u16string Path::AsU16Str() const {
     switch (GetType()) {
-    case Char:
+    case LowPathType::Char:
         return Common::UTF8ToUTF16(string);
-    case Wchar:
+    case LowPathType::Wchar:
         return u16str;
-    case Empty:
+    case LowPathType::Empty:
         return {};
-    case Invalid:
-    case Binary:
+    case LowPathType::Invalid:
+    case LowPathType::Binary:
         // TODO(yuriks): Add assert
         LOG_ERROR(Service_FS, "LowPathType cannot be converted to u16string!");
         return {};
@@ -96,27 +95,27 @@ std::u16string Path::AsU16Str() const {
 
 std::vector<u8> Path::AsBinary() const {
     switch (GetType()) {
-    case Binary:
+    case LowPathType::Binary:
         return binary;
-    case Char:
+    case LowPathType::Char:
         return std::vector<u8>(string.begin(), string.end());
-    case Wchar: {
+    case LowPathType::Wchar: {
         // use two u8 for each character of u16str
         std::vector<u8> to_return(u16str.size() * 2);
-        for (size_t i = 0; i < u16str.size(); ++i) {
+        for (std::size_t i = 0; i < u16str.size(); ++i) {
             u16 tmp_char = u16str.at(i);
             to_return[i * 2] = (tmp_char & 0xFF00) >> 8;
             to_return[i * 2 + 1] = (tmp_char & 0x00FF);
         }
         return to_return;
     }
-    case Empty:
+    case LowPathType::Empty:
         return {};
-    case Invalid:
+    case LowPathType::Invalid:
     default:
         // TODO(yuriks): Add assert
         LOG_ERROR(Service_FS, "LowPathType cannot be converted to binary!");
         return {};
     }
 }
-}
+} // namespace FileSys

@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include <future>
 #include <memory>
+#include <QFutureWatcher>
 #include <QWidget>
 
 namespace Ui {
@@ -20,6 +20,7 @@ public:
     ~ConfigureWeb();
 
     void applyConfiguration();
+    void retranslateUi();
 
 public slots:
     void RefreshTelemetryID();
@@ -27,14 +28,11 @@ public slots:
     void VerifyLogin();
     void OnLoginVerified();
 
-signals:
-    void LoginVerified();
-
 private:
     void setConfiguration();
 
     bool user_verified = true;
-    std::future<bool> verified;
+    QFutureWatcher<bool> verify_watcher;
 
     std::unique_ptr<Ui::ConfigureWeb> ui;
 };

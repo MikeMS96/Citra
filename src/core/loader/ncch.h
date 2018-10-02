@@ -19,8 +19,8 @@ namespace Loader {
 class AppLoader_NCCH final : public AppLoader {
 public:
     AppLoader_NCCH(FileUtil::IOFile&& file, const std::string& filepath)
-        : AppLoader(std::move(file)), filepath(filepath), base_ncch(filepath),
-          overlay_ncch(&base_ncch) {}
+        : AppLoader(std::move(file)), base_ncch(filepath), overlay_ncch(&base_ncch),
+          filepath(filepath) {}
 
     /**
      * Returns the type of the file
@@ -51,11 +51,9 @@ public:
 
     ResultStatus ReadProgramId(u64& out_program_id) override;
 
-    ResultStatus ReadRomFS(std::shared_ptr<FileUtil::IOFile>& romfs_file, u64& offset,
-                           u64& size) override;
+    ResultStatus ReadRomFS(std::shared_ptr<FileSys::RomFSReader>& romfs_file) override;
 
-    ResultStatus ReadUpdateRomFS(std::shared_ptr<FileUtil::IOFile>& romfs_file, u64& offset,
-                                 u64& size) override;
+    ResultStatus ReadUpdateRomFS(std::shared_ptr<FileSys::RomFSReader>& romfs_file) override;
 
     ResultStatus ReadTitle(std::string& title) override;
 

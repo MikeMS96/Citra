@@ -5,30 +5,21 @@
 #pragma once
 
 #include <cstddef>
-#include "audio_core/audio_core.h"
+#include "audio_core/audio_types.h"
 #include "audio_core/sink.h"
 
 namespace AudioCore {
 
 class NullSink final : public Sink {
 public:
+    NullSink(std::string) {}
     ~NullSink() override = default;
 
     unsigned int GetNativeSampleRate() const override {
         return native_sample_rate;
     }
 
-    void EnqueueSamples(const s16*, size_t) override {}
-
-    size_t SamplesInQueue() const override {
-        return 0;
-    }
-
-    void SetDevice(int device_id) override {}
-
-    std::vector<std::string> GetDeviceList() const override {
-        return {};
-    }
+    void SetCallback(std::function<void(s16*, std::size_t)>) override {}
 };
 
 } // namespace AudioCore

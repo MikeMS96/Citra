@@ -13,8 +13,7 @@
 #include "core/hle/service/nwm/nwm_uds.h"
 #include "core/hle/service/nwm/uds_beacon.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
 // 802.11 broadcast MAC address
 constexpr MacAddress BroadcastMac = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -224,7 +223,7 @@ std::vector<u8> GeneratedEncryptedData(const NetworkInfo& network_info, const No
     return buffer;
 }
 
-void DecryptBeaconData(const NetworkInfo& network_info, std::vector<u8>& buffer) {
+void DecryptBeacon(const NetworkInfo& network_info, std::vector<u8>& buffer) {
     // Decrypt the data using AES-CTR and the NWM beacon key.
     using CryptoPP::AES;
     std::array<u8, AES::BLOCKSIZE> counter = GetBeaconCryptoCTR(network_info);
@@ -241,8 +240,8 @@ void DecryptBeaconData(const NetworkInfo& network_info, std::vector<u8>& buffer)
  */
 std::vector<u8> GenerateNintendoFirstEncryptedDataTag(const NetworkInfo& network_info,
                                                       const NodeList& nodes) {
-    const size_t payload_size =
-        std::min<size_t>(EncryptedDataSizeCutoff, nodes.size() * sizeof(NodeInfo));
+    const std::size_t payload_size =
+        std::min<std::size_t>(EncryptedDataSizeCutoff, nodes.size() * sizeof(NodeInfo));
 
     EncryptedDataTag tag{};
     tag.header.tag_id = static_cast<u8>(TagId::VendorSpecific);
@@ -273,9 +272,9 @@ std::vector<u8> GenerateNintendoSecondEncryptedDataTag(const NetworkInfo& networ
     if (nodes.size() * sizeof(NodeInfo) <= EncryptedDataSizeCutoff)
         return {};
 
-    const size_t payload_size = nodes.size() * sizeof(NodeInfo) - EncryptedDataSizeCutoff;
+    const std::size_t payload_size = nodes.size() * sizeof(NodeInfo) - EncryptedDataSizeCutoff;
 
-    const size_t tag_length = sizeof(EncryptedDataTag) - sizeof(TagHeader) + payload_size;
+    const std::size_t tag_length = sizeof(EncryptedDataTag) - sizeof(TagHeader) + payload_size;
 
     // TODO(Subv): What does the 3DS do when a game has too much data to fit into the tag?
     ASSERT_MSG(tag_length <= 255, "Data is too big.");
@@ -328,5 +327,4 @@ std::vector<u8> GenerateBeaconFrame(const NetworkInfo& network_info, const NodeL
     return buffer;
 }
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

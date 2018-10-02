@@ -2,139 +2,148 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#ifdef _WIN32
-#include <winsock.h>
-#endif
-
 #include <cstdlib>
+#include <string>
 #include <thread>
-#include <cpr/cpr.h>
+#include <LUrlParser.h>
+#include "common/announce_multiplayer_room.h"
 #include "common/logging/log.h"
+#include "core/settings.h"
 #include "web_service/web_backend.h"
 
 namespace WebService {
 
 static constexpr char API_VERSION[]{"1"};
 
-static std::unique_ptr<cpr::Session> g_session;
+constexpr int HTTP_PORT = 80;
+constexpr int HTTPS_PORT = 443;
 
-void Win32WSAStartup() {
-#ifdef _WIN32
-    // On Windows, CPR/libcurl does not properly initialize Winsock. The below code is used to
-    // initialize Winsock globally, which fixes this problem. Without this, only the first CPR
-    // session will properly be created, and subsequent ones will fail.
-    WSADATA wsa_data;
-    const int wsa_result{WSAStartup(MAKEWORD(2, 2), &wsa_data)};
-    if (wsa_result) {
-        LOG_CRITICAL(WebService, "WSAStartup failed: %d", wsa_result);
+constexpr int TIMEOUT_SECONDS = 30;
+
+Client::JWTCache Client::jwt_cache{};
+
+Client::Client(const std::string& host, const std::string& username, const std::string& token)
+    : host(host), username(username), token(token) {
+    std::lock_guard<std::mutex> lock(jwt_cache.mutex);
+    if (username == jwt_cache.username && token == jwt_cache.token) {
+        jwt = jwt_cache.jwt;
     }
-#endif
 }
 
-void PostJson(const std::string& url, const std::string& data, bool allow_anonymous,
-              const std::string& username, const std::string& token) {
-    if (url.empty()) {
-        LOG_ERROR(WebService, "URL is invalid");
-        return;
+Common::WebResult Client::GenericJson(const std::string& method, const std::string& path,
+                                      const std::string& data, const std::string& jwt,
+                                      const std::string& username, const std::string& token) {
+    if (cli == nullptr) {
+        auto parsedUrl = LUrlParser::clParseURL::ParseURL(host);
+        int port;
+        if (parsedUrl.m_Scheme == "http") {
+            if (!parsedUrl.GetPort(&port)) {
+                port = HTTP_PORT;
+            }
+            cli =
+                std::make_unique<httplib::Client>(parsedUrl.m_Host.c_str(), port, TIMEOUT_SECONDS);
+        } else if (parsedUrl.m_Scheme == "https") {
+            if (!parsedUrl.GetPort(&port)) {
+                port = HTTPS_PORT;
+            }
+            cli = std::make_unique<httplib::SSLClient>(parsedUrl.m_Host.c_str(), port,
+                                                       TIMEOUT_SECONDS);
+        } else {
+            LOG_ERROR(WebService, "Bad URL scheme {}", parsedUrl.m_Scheme);
+            return Common::WebResult{Common::WebResult::Code::InvalidURL, "Bad URL scheme"};
+        }
+    }
+    if (cli == nullptr) {
+        LOG_ERROR(WebService, "Invalid URL {}", host + path);
+        return Common::WebResult{Common::WebResult::Code::InvalidURL, "Invalid URL"};
     }
 
-    const bool are_credentials_provided{!token.empty() && !username.empty()};
-    if (!allow_anonymous && !are_credentials_provided) {
+    httplib::Headers params;
+    if (!jwt.empty()) {
+        params = {
+            {std::string("Authorization"), fmt::format("Bearer {}", jwt)},
+        };
+    } else if (!username.empty()) {
+        params = {
+            {std::string("x-username"), username},
+            {std::string("x-token"), token},
+        };
+    }
+
+    params.emplace(std::string("api-version"), std::string(API_VERSION));
+    if (method != "GET") {
+        params.emplace(std::string("Content-Type"), std::string("application/json"));
+    };
+
+    httplib::Request request;
+    request.method = method;
+    request.path = path;
+    request.headers = params;
+    request.body = data;
+
+    httplib::Response response;
+
+    if (!cli->send(request, response)) {
+        LOG_ERROR(WebService, "{} to {} returned null", method, host + path);
+        return Common::WebResult{Common::WebResult::Code::LibError, "Null response"};
+    }
+
+    if (response.status >= 400) {
+        LOG_ERROR(WebService, "{} to {} returned error status code: {}", method, host + path,
+                  response.status);
+        return Common::WebResult{Common::WebResult::Code::HttpError,
+                                 std::to_string(response.status)};
+    }
+
+    auto content_type = response.headers.find("content-type");
+
+    if (content_type == response.headers.end()) {
+        LOG_ERROR(WebService, "{} to {} returned no content", method, host + path);
+        return Common::WebResult{Common::WebResult::Code::WrongContent, ""};
+    }
+
+    if (content_type->second.find("application/json") == std::string::npos &&
+        content_type->second.find("text/html; charset=utf-8") == std::string::npos) {
+        LOG_ERROR(WebService, "{} to {} returned wrong content: {}", method, host + path,
+                  content_type->second);
+        return Common::WebResult{Common::WebResult::Code::WrongContent, "Wrong content"};
+    }
+    return Common::WebResult{Common::WebResult::Code::Success, "", response.body};
+}
+
+void Client::UpdateJWT() {
+    if (!username.empty() && !token.empty()) {
+        auto result = GenericJson("POST", "/jwt/internal", "", "", username, token);
+        if (result.result_code != Common::WebResult::Code::Success) {
+            LOG_ERROR(WebService, "UpdateJWT failed");
+        } else {
+            std::lock_guard<std::mutex> lock(jwt_cache.mutex);
+            jwt_cache.username = username;
+            jwt_cache.token = token;
+            jwt_cache.jwt = jwt = result.returned_data;
+        }
+    }
+}
+
+Common::WebResult Client::GenericJson(const std::string& method, const std::string& path,
+                                      const std::string& data, bool allow_anonymous) {
+    if (jwt.empty()) {
+        UpdateJWT();
+    }
+
+    if (jwt.empty() && !allow_anonymous) {
         LOG_ERROR(WebService, "Credentials must be provided for authenticated requests");
-        return;
+        return Common::WebResult{Common::WebResult::Code::CredentialsMissing, "Credentials needed"};
     }
 
-    Win32WSAStartup();
-
-    // Built request header
-    cpr::Header header;
-    if (are_credentials_provided) {
-        // Authenticated request if credentials are provided
-        header = {{"Content-Type", "application/json"},
-                  {"x-username", username.c_str()},
-                  {"x-token", token.c_str()},
-                  {"api-version", API_VERSION}};
-    } else {
-        // Otherwise, anonymous request
-        header = cpr::Header{{"Content-Type", "application/json"}, {"api-version", API_VERSION}};
+    auto result = GenericJson(method, path, data, jwt);
+    if (result.result_string == "401") {
+        // Try again with new JWT
+        UpdateJWT();
+        result = GenericJson(method, path, data, jwt);
     }
 
-    // Post JSON asynchronously
-    static std::future<void> future;
-    future = cpr::PostCallback(
-        [](cpr::Response r) {
-            if (r.error) {
-                LOG_ERROR(WebService, "POST returned cpr error: %u:%s",
-                          static_cast<u32>(r.error.code), r.error.message.c_str());
-                return;
-            }
-            if (r.status_code >= 400) {
-                LOG_ERROR(WebService, "POST returned error status code: %u", r.status_code);
-                return;
-            }
-            if (r.header["content-type"].find("application/json") == std::string::npos) {
-                LOG_ERROR(WebService, "POST returned wrong content: %s",
-                          r.header["content-type"].c_str());
-                return;
-            }
-        },
-        cpr::Url{url}, cpr::Body{data}, header);
+    return result;
 }
-
-template <typename T>
-std::future<T> GetJson(std::function<T(const std::string&)> func, const std::string& url,
-                       bool allow_anonymous, const std::string& username,
-                       const std::string& token) {
-    if (url.empty()) {
-        LOG_ERROR(WebService, "URL is invalid");
-        return std::async(std::launch::async, [func{std::move(func)}]() { return func(""); });
-    }
-
-    const bool are_credentials_provided{!token.empty() && !username.empty()};
-    if (!allow_anonymous && !are_credentials_provided) {
-        LOG_ERROR(WebService, "Credentials must be provided for authenticated requests");
-        return std::async(std::launch::async, [func{std::move(func)}]() { return func(""); });
-    }
-
-    Win32WSAStartup();
-
-    // Built request header
-    cpr::Header header;
-    if (are_credentials_provided) {
-        // Authenticated request if credentials are provided
-        header = {{"Content-Type", "application/json"},
-                  {"x-username", username.c_str()},
-                  {"x-token", token.c_str()},
-                  {"api-version", API_VERSION}};
-    } else {
-        // Otherwise, anonymous request
-        header = cpr::Header{{"Content-Type", "application/json"}, {"api-version", API_VERSION}};
-    }
-
-    // Get JSON asynchronously
-    return cpr::GetCallback(
-        [func{std::move(func)}](cpr::Response r) {
-            if (r.error) {
-                LOG_ERROR(WebService, "GET returned cpr error: %u:%s",
-                          static_cast<u32>(r.error.code), r.error.message.c_str());
-                return func("");
-            }
-            if (r.status_code >= 400) {
-                LOG_ERROR(WebService, "GET returned error code: %u", r.status_code);
-                return func("");
-            }
-            if (r.header["content-type"].find("application/json") == std::string::npos) {
-                LOG_ERROR(WebService, "GET returned wrong content: %s",
-                          r.header["content-type"].c_str());
-                return func("");
-            }
-            return func(r.text);
-        },
-        cpr::Url{url}, header);
-}
-
-template std::future<bool> GetJson(std::function<bool(const std::string&)> func,
-                                   const std::string& url, bool allow_anonymous,
-                                   const std::string& username, const std::string& token);
 
 } // namespace WebService

@@ -4,19 +4,13 @@
 
 #pragma once
 
-#include "core/hle/service/service.h"
+#include "core/hle/service/am/am.h"
 
-namespace Service {
-namespace AM {
+namespace Service::AM {
 
-class AM_NET_Interface : public Service::Interface {
+class AM_NET final : public Module::Interface {
 public:
-    AM_NET_Interface();
-
-    std::string GetPortName() const override {
-        return "am:net";
-    }
+    explicit AM_NET(std::shared_ptr<Module> am);
 };
 
-} // namespace AM
-} // namespace Service
+} // namespace Service::AM

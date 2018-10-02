@@ -7,7 +7,7 @@
 #include <vector>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include "common/common_types.h"
-#include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/object.h"
 
 namespace Kernel {
 
@@ -59,7 +59,7 @@ private:
 template <>
 inline SharedPtr<WaitObject> DynamicObjectCast<WaitObject>(SharedPtr<Object> object) {
     if (object != nullptr && object->IsWaitable()) {
-        return boost::static_pointer_cast<WaitObject>(std::move(object));
+        return boost::static_pointer_cast<WaitObject>(object);
     }
     return nullptr;
 }

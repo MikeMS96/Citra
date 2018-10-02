@@ -6,17 +6,11 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace CAM {
+namespace Service::CAM {
 
-class CAM_Q_Interface : public Service::Interface {
+class CAM_Q : public ServiceFramework<CAM_Q> {
 public:
-    CAM_Q_Interface();
-
-    std::string GetPortName() const override {
-        return "cam:q";
-    }
+    CAM_Q();
 };
 
-} // namespace CAM
-} // namespace Service
+} // namespace Service::CAM

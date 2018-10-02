@@ -8,7 +8,9 @@
 #include "common/assert.h"
 #include "common/file_util.h"
 #include "common/scm_rev.h"
+#ifdef ARCHITECTURE_x86_64
 #include "common/x64/cpu_detect.h"
+#endif
 #include "core/core.h"
 #include "core/settings.h"
 #include "core/telemetry_session.h"
@@ -20,6 +22,7 @@
 
 namespace Core {
 
+#ifdef ARCHITECTURE_x86_64
 static const char* CpuVendorToStr(Common::CPUVendor vendor) {
     switch (vendor) {
     case Common::CPUVendor::INTEL:
@@ -31,6 +34,7 @@ static const char* CpuVendorToStr(Common::CPUVendor vendor) {
     }
     UNREACHABLE();
 }
+#endif
 
 static u64 GenerateTelemetryId() {
     u64 telemetry_id{};
@@ -41,19 +45,20 @@ static u64 GenerateTelemetryId() {
 
 u64 GetTelemetryId() {
     u64 telemetry_id{};
-    static const std::string& filename{FileUtil::GetUserPath(D_CONFIG_IDX) + "telemetry_id"};
+    const std::string filename{FileUtil::GetUserPath(FileUtil::UserPath::ConfigDir) +
+                               "telemetry_id"};
 
     if (FileUtil::Exists(filename)) {
         FileUtil::IOFile file(filename, "rb");
         if (!file.IsOpen()) {
-            LOG_ERROR(Core, "failed to open telemetry_id: %s", filename.c_str());
+            LOG_ERROR(Core, "failed to open telemetry_id: {}", filename);
             return {};
         }
         file.ReadBytes(&telemetry_id, sizeof(u64));
     } else {
         FileUtil::IOFile file(filename, "wb");
         if (!file.IsOpen()) {
-            LOG_ERROR(Core, "failed to open telemetry_id: %s", filename.c_str());
+            LOG_ERROR(Core, "failed to open telemetry_id: {}", filename);
             return {};
         }
         telemetry_id = GenerateTelemetryId();
@@ -65,34 +70,32 @@ u64 GetTelemetryId() {
 
 u64 RegenerateTelemetryId() {
     const u64 new_telemetry_id{GenerateTelemetryId()};
-    static const std::string& filename{FileUtil::GetUserPath(D_CONFIG_IDX) + "telemetry_id"};
+    const std::string filename{FileUtil::GetUserPath(FileUtil::UserPath::ConfigDir) +
+                               "telemetry_id"};
 
     FileUtil::IOFile file(filename, "wb");
     if (!file.IsOpen()) {
-        LOG_ERROR(Core, "failed to open telemetry_id: %s", filename.c_str());
+        LOG_ERROR(Core, "failed to open telemetry_id: {}", filename);
         return {};
     }
     file.WriteBytes(&new_telemetry_id, sizeof(u64));
     return new_telemetry_id;
 }
 
-std::future<bool> VerifyLogin(std::string username, std::string token, std::function<void()> func) {
+bool VerifyLogin(std::string username, std::string token) {
 #ifdef ENABLE_WEB_SERVICE
-    return WebService::VerifyLogin(username, token, Settings::values.verify_endpoint_url, func);
+    return WebService::VerifyLogin(Settings::values.web_api_url, username, token);
 #else
-    return std::async(std::launch::async, [func{std::move(func)}]() {
-        func();
-        return false;
-    });
+    return false;
 #endif
 }
 
 TelemetrySession::TelemetrySession() {
 #ifdef ENABLE_WEB_SERVICE
     if (Settings::values.enable_telemetry) {
-        backend = std::make_unique<WebService::TelemetryJson>(
-            Settings::values.telemetry_endpoint_url, Settings::values.citra_username,
-            Settings::values.citra_token);
+        backend = std::make_unique<WebService::TelemetryJson>(Settings::values.web_api_url,
+                                                              Settings::values.citra_username,
+                                                              Settings::values.citra_token);
     } else {
         backend = std::make_unique<Telemetry::NullVisitor>();
     }
@@ -121,7 +124,8 @@ TelemetrySession::TelemetrySession() {
     AddField(Telemetry::FieldType::App, "BuildDate", Common::g_build_date);
     AddField(Telemetry::FieldType::App, "BuildName", Common::g_build_name);
 
-    // Log user system information
+// Log user system information
+#ifdef ARCHITECTURE_x86_64
     AddField(Telemetry::FieldType::UserSystem, "CPU_Model", Common::GetCPUCaps().cpu_string);
     AddField(Telemetry::FieldType::UserSystem, "CPU_BrandString",
              Common::GetCPUCaps().brand_string);
@@ -143,6 +147,9 @@ TelemetrySession::TelemetrySession() {
              Common::GetCPUCaps().sse4_1);
     AddField(Telemetry::FieldType::UserSystem, "CPU_Extension_x64_SSE42",
              Common::GetCPUCaps().sse4_2);
+#else
+    AddField(Telemetry::FieldType::UserSystem, "CPU_Model", "Other");
+#endif
 #ifdef __APPLE__
     AddField(Telemetry::FieldType::UserSystem, "OsPlatform", "Apple");
 #elif defined(_WIN32)
@@ -154,18 +161,28 @@ TelemetrySession::TelemetrySession() {
 #endif
 
     // Log user configuration information
+    AddField(Telemetry::FieldType::UserConfig, "Audio_SinkId", Settings::values.sink_id);
     AddField(Telemetry::FieldType::UserConfig, "Audio_EnableAudioStretching",
              Settings::values.enable_audio_stretching);
     AddField(Telemetry::FieldType::UserConfig, "Core_UseCpuJit", Settings::values.use_cpu_jit);
     AddField(Telemetry::FieldType::UserConfig, "Renderer_ResolutionFactor",
              Settings::values.resolution_factor);
-    AddField(Telemetry::FieldType::UserConfig, "Renderer_ToggleFramelimit",
-             Settings::values.toggle_framelimit);
+    AddField(Telemetry::FieldType::UserConfig, "Renderer_UseFrameLimit",
+             Settings::values.use_frame_limit);
+    AddField(Telemetry::FieldType::UserConfig, "Renderer_FrameLimit", Settings::values.frame_limit);
     AddField(Telemetry::FieldType::UserConfig, "Renderer_UseHwRenderer",
              Settings::values.use_hw_renderer);
+    AddField(Telemetry::FieldType::UserConfig, "Renderer_UseHwShader",
+             Settings::values.use_hw_shader);
+    AddField(Telemetry::FieldType::UserConfig, "Renderer_ShadersAccurateGs",
+             Settings::values.shaders_accurate_gs);
+    AddField(Telemetry::FieldType::UserConfig, "Renderer_ShadersAccurateMul",
+             Settings::values.shaders_accurate_mul);
     AddField(Telemetry::FieldType::UserConfig, "Renderer_UseShaderJit",
              Settings::values.use_shader_jit);
     AddField(Telemetry::FieldType::UserConfig, "Renderer_UseVsync", Settings::values.use_vsync);
+    AddField(Telemetry::FieldType::UserConfig, "Renderer_Toggle3d", Settings::values.toggle_3d);
+    AddField(Telemetry::FieldType::UserConfig, "Renderer_Factor3d", Settings::values.factor_3d);
     AddField(Telemetry::FieldType::UserConfig, "System_IsNew3ds", Settings::values.is_new_3ds);
     AddField(Telemetry::FieldType::UserConfig, "System_RegionValue", Settings::values.region_value);
 }

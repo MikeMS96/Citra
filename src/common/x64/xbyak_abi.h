@@ -9,10 +9,9 @@
 #include "common/assert.h"
 #include "common/bit_set.h"
 
-namespace Common {
-namespace X64 {
+namespace Common::X64 {
 
-int RegToIndex(const Xbyak::Reg& reg) {
+inline int RegToIndex(const Xbyak::Reg& reg) {
     using Kind = Xbyak::Reg::Kind;
     ASSERT_MSG((reg.getKind() & (Kind::REG | Kind::XMM)) != 0,
                "RegSet only support GPRs and XMM registers.");
@@ -60,24 +59,45 @@ const Xbyak::Reg ABI_PARAM4 = Xbyak::util::r9;
 
 const BitSet32 ABI_ALL_CALLER_SAVED = BuildRegSet({
     // GPRs
-    Xbyak::util::rcx, Xbyak::util::rdx, Xbyak::util::r8, Xbyak::util::r9, Xbyak::util::r10,
+    Xbyak::util::rcx,
+    Xbyak::util::rdx,
+    Xbyak::util::r8,
+    Xbyak::util::r9,
+    Xbyak::util::r10,
     Xbyak::util::r11,
     // XMMs
-    Xbyak::util::xmm0, Xbyak::util::xmm1, Xbyak::util::xmm2, Xbyak::util::xmm3, Xbyak::util::xmm4,
+    Xbyak::util::xmm0,
+    Xbyak::util::xmm1,
+    Xbyak::util::xmm2,
+    Xbyak::util::xmm3,
+    Xbyak::util::xmm4,
     Xbyak::util::xmm5,
 });
 
 const BitSet32 ABI_ALL_CALLEE_SAVED = BuildRegSet({
     // GPRs
-    Xbyak::util::rbx, Xbyak::util::rsi, Xbyak::util::rdi, Xbyak::util::rbp, Xbyak::util::r12,
-    Xbyak::util::r13, Xbyak::util::r14, Xbyak::util::r15,
+    Xbyak::util::rbx,
+    Xbyak::util::rsi,
+    Xbyak::util::rdi,
+    Xbyak::util::rbp,
+    Xbyak::util::r12,
+    Xbyak::util::r13,
+    Xbyak::util::r14,
+    Xbyak::util::r15,
     // XMMs
-    Xbyak::util::xmm6, Xbyak::util::xmm7, Xbyak::util::xmm8, Xbyak::util::xmm9, Xbyak::util::xmm10,
-    Xbyak::util::xmm11, Xbyak::util::xmm12, Xbyak::util::xmm13, Xbyak::util::xmm14,
+    Xbyak::util::xmm6,
+    Xbyak::util::xmm7,
+    Xbyak::util::xmm8,
+    Xbyak::util::xmm9,
+    Xbyak::util::xmm10,
+    Xbyak::util::xmm11,
+    Xbyak::util::xmm12,
+    Xbyak::util::xmm13,
+    Xbyak::util::xmm14,
     Xbyak::util::xmm15,
 });
 
-constexpr size_t ABI_SHADOW_SPACE = 0x20;
+constexpr std::size_t ABI_SHADOW_SPACE = 0x20;
 
 #else
 
@@ -90,37 +110,60 @@ const Xbyak::Reg ABI_PARAM4 = Xbyak::util::rcx;
 
 const BitSet32 ABI_ALL_CALLER_SAVED = BuildRegSet({
     // GPRs
-    Xbyak::util::rcx, Xbyak::util::rdx, Xbyak::util::rdi, Xbyak::util::rsi, Xbyak::util::r8,
-    Xbyak::util::r9, Xbyak::util::r10, Xbyak::util::r11,
+    Xbyak::util::rcx,
+    Xbyak::util::rdx,
+    Xbyak::util::rdi,
+    Xbyak::util::rsi,
+    Xbyak::util::r8,
+    Xbyak::util::r9,
+    Xbyak::util::r10,
+    Xbyak::util::r11,
     // XMMs
-    Xbyak::util::xmm0, Xbyak::util::xmm1, Xbyak::util::xmm2, Xbyak::util::xmm3, Xbyak::util::xmm4,
-    Xbyak::util::xmm5, Xbyak::util::xmm6, Xbyak::util::xmm7, Xbyak::util::xmm8, Xbyak::util::xmm9,
-    Xbyak::util::xmm10, Xbyak::util::xmm11, Xbyak::util::xmm12, Xbyak::util::xmm13,
-    Xbyak::util::xmm14, Xbyak::util::xmm15,
+    Xbyak::util::xmm0,
+    Xbyak::util::xmm1,
+    Xbyak::util::xmm2,
+    Xbyak::util::xmm3,
+    Xbyak::util::xmm4,
+    Xbyak::util::xmm5,
+    Xbyak::util::xmm6,
+    Xbyak::util::xmm7,
+    Xbyak::util::xmm8,
+    Xbyak::util::xmm9,
+    Xbyak::util::xmm10,
+    Xbyak::util::xmm11,
+    Xbyak::util::xmm12,
+    Xbyak::util::xmm13,
+    Xbyak::util::xmm14,
+    Xbyak::util::xmm15,
 });
 
 const BitSet32 ABI_ALL_CALLEE_SAVED = BuildRegSet({
     // GPRs
-    Xbyak::util::rbx, Xbyak::util::rbp, Xbyak::util::r12, Xbyak::util::r13, Xbyak::util::r14,
+    Xbyak::util::rbx,
+    Xbyak::util::rbp,
+    Xbyak::util::r12,
+    Xbyak::util::r13,
+    Xbyak::util::r14,
     Xbyak::util::r15,
 });
 
-constexpr size_t ABI_SHADOW_SPACE = 0;
+constexpr std::size_t ABI_SHADOW_SPACE = 0;
 
 #endif
 
-void ABI_CalculateFrameSize(BitSet32 regs, size_t rsp_alignment, size_t needed_frame_size,
-                            s32* out_subtraction, s32* out_xmm_offset) {
+inline void ABI_CalculateFrameSize(BitSet32 regs, std::size_t rsp_alignment,
+                                   std::size_t needed_frame_size, s32* out_subtraction,
+                                   s32* out_xmm_offset) {
     int count = (regs & ABI_ALL_GPRS).Count();
     rsp_alignment -= count * 8;
-    size_t subtraction = 0;
+    std::size_t subtraction = 0;
     int xmm_count = (regs & ABI_ALL_XMMS).Count();
     if (xmm_count) {
         // If we have any XMMs to save, we must align the stack here.
         subtraction = rsp_alignment & 0xF;
     }
     subtraction += 0x10 * xmm_count;
-    size_t xmm_base_subtraction = subtraction;
+    std::size_t xmm_base_subtraction = subtraction;
     subtraction += needed_frame_size;
     subtraction += ABI_SHADOW_SPACE;
     // Final alignment.
@@ -131,8 +174,9 @@ void ABI_CalculateFrameSize(BitSet32 regs, size_t rsp_alignment, size_t needed_f
     *out_xmm_offset = (s32)(subtraction - xmm_base_subtraction);
 }
 
-size_t ABI_PushRegistersAndAdjustStack(Xbyak::CodeGenerator& code, BitSet32 regs,
-                                       size_t rsp_alignment, size_t needed_frame_size = 0) {
+inline std::size_t ABI_PushRegistersAndAdjustStack(Xbyak::CodeGenerator& code, BitSet32 regs,
+                                                   std::size_t rsp_alignment,
+                                                   std::size_t needed_frame_size = 0) {
     s32 subtraction, xmm_offset;
     ABI_CalculateFrameSize(regs, rsp_alignment, needed_frame_size, &subtraction, &xmm_offset);
 
@@ -152,8 +196,9 @@ size_t ABI_PushRegistersAndAdjustStack(Xbyak::CodeGenerator& code, BitSet32 regs
     return ABI_SHADOW_SPACE;
 }
 
-void ABI_PopRegistersAndAdjustStack(Xbyak::CodeGenerator& code, BitSet32 regs, size_t rsp_alignment,
-                                    size_t needed_frame_size = 0) {
+inline void ABI_PopRegistersAndAdjustStack(Xbyak::CodeGenerator& code, BitSet32 regs,
+                                           std::size_t rsp_alignment,
+                                           std::size_t needed_frame_size = 0) {
     s32 subtraction, xmm_offset;
     ABI_CalculateFrameSize(regs, rsp_alignment, needed_frame_size, &subtraction, &xmm_offset);
 
@@ -174,5 +219,4 @@ void ABI_PopRegistersAndAdjustStack(Xbyak::CodeGenerator& code, BitSet32 regs, s
     }
 }
 
-} // namespace X64
-} // namespace Common
+} // namespace Common::X64

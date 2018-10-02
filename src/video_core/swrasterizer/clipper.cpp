@@ -91,7 +91,7 @@ void ProcessTriangle(const OutputVertex& v0, const OutputVertex& v1, const Outpu
     // the new edge (or less in degenerate cases). As such, we can say that each clipping plane
     // introduces at most 1 new vertex to the polygon. Since we start with a triangle and have a
     // fixed 6 clipping planes, the maximum number of vertices of the clipped polygon is 3 + 6 = 9.
-    static const size_t MAX_VERTICES = 9;
+    static const std::size_t MAX_VERTICES = 9;
     static_vector<Vertex, MAX_VERTICES> buffer_a = {v0, v1, v2};
     static_vector<Vertex, MAX_VERTICES> buffer_b;
 
@@ -166,26 +166,27 @@ void ProcessTriangle(const OutputVertex& v0, const OutputVertex& v1, const Outpu
     InitScreenCoordinates((*output_list)[0]);
     InitScreenCoordinates((*output_list)[1]);
 
-    for (size_t i = 0; i < output_list->size() - 2; i++) {
+    for (std::size_t i = 0; i < output_list->size() - 2; i++) {
         Vertex& vtx0 = (*output_list)[0];
         Vertex& vtx1 = (*output_list)[i + 1];
         Vertex& vtx2 = (*output_list)[i + 2];
 
         InitScreenCoordinates(vtx2);
 
-        LOG_TRACE(Render_Software,
-                  "Triangle %lu/%lu at position (%.3f, %.3f, %.3f, %.3f), "
-                  "(%.3f, %.3f, %.3f, %.3f), (%.3f, %.3f, %.3f, %.3f) and "
-                  "screen position (%.2f, %.2f, %.2f), (%.2f, %.2f, %.2f), (%.2f, %.2f, %.2f)",
-                  i + 1, output_list->size() - 2, vtx0.pos.x.ToFloat32(), vtx0.pos.y.ToFloat32(),
-                  vtx0.pos.z.ToFloat32(), vtx0.pos.w.ToFloat32(), vtx1.pos.x.ToFloat32(),
-                  vtx1.pos.y.ToFloat32(), vtx1.pos.z.ToFloat32(), vtx1.pos.w.ToFloat32(),
-                  vtx2.pos.x.ToFloat32(), vtx2.pos.y.ToFloat32(), vtx2.pos.z.ToFloat32(),
-                  vtx2.pos.w.ToFloat32(), vtx0.screenpos.x.ToFloat32(),
-                  vtx0.screenpos.y.ToFloat32(), vtx0.screenpos.z.ToFloat32(),
-                  vtx1.screenpos.x.ToFloat32(), vtx1.screenpos.y.ToFloat32(),
-                  vtx1.screenpos.z.ToFloat32(), vtx2.screenpos.x.ToFloat32(),
-                  vtx2.screenpos.y.ToFloat32(), vtx2.screenpos.z.ToFloat32());
+        LOG_TRACE(
+            Render_Software,
+            "Triangle {}/{} at position ({:.3}, {:.3}, {:.3}, {:.3f}), "
+            "({:.3}, {:.3}, {:.3}, {:.3}), ({:.3}, {:.3}, {:.3}, {:.3}) and "
+            "screen position ({:.2}, {:.2}, {:.2}), ({:.2}, {:.2}, {:.2}), ({:.2}, {:.2}, {:.2})",
+            i + 1, output_list->size() - 2, vtx0.pos.x.ToFloat32(), vtx0.pos.y.ToFloat32(),
+            vtx0.pos.z.ToFloat32(), vtx0.pos.w.ToFloat32(), vtx1.pos.x.ToFloat32(),
+            vtx1.pos.y.ToFloat32(), vtx1.pos.z.ToFloat32(), vtx1.pos.w.ToFloat32(),
+            vtx2.pos.x.ToFloat32(), vtx2.pos.y.ToFloat32(), vtx2.pos.z.ToFloat32(),
+            vtx2.pos.w.ToFloat32(), vtx0.screenpos.x.ToFloat32(), vtx0.screenpos.y.ToFloat32(),
+            vtx0.screenpos.z.ToFloat32(), vtx1.screenpos.x.ToFloat32(),
+            vtx1.screenpos.y.ToFloat32(), vtx1.screenpos.z.ToFloat32(),
+            vtx2.screenpos.x.ToFloat32(), vtx2.screenpos.y.ToFloat32(),
+            vtx2.screenpos.z.ToFloat32());
 
         Rasterizer::ProcessTriangle(vtx0, vtx1, vtx2);
     }

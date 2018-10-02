@@ -11,8 +11,7 @@
 #include "core/hle/service/sm/sm.h"
 #include "core/hle/service/sm/srv.h"
 
-namespace Service {
-namespace SM {
+namespace Service::SM {
 
 static ResultCode ValidateServiceName(const std::string& name) {
     if (name.size() <= 0 || name.size() > 8) {
@@ -67,7 +66,4 @@ ResultVal<Kernel::SharedPtr<Kernel::ClientSession>> ServiceManager::ConnectToSer
     return client_port->Connect();
 }
 
-std::shared_ptr<ServiceManager> g_service_manager;
-
-} // namespace SM
-} // namespace Service
+} // namespace Service::SM

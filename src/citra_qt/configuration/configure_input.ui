@@ -289,6 +289,13 @@
         <bool>false</bool>
        </property>
        <layout class="QGridLayout" name="gridLayout_4">
+        <item row="2" column="0" colspan="2">
+         <widget class="QPushButton" name="buttonCircleAnalog">
+          <property name="text">
+           <string>Set Analog Stick</string>
+          </property>
+         </widget>
+        </item>
         <item row="0" column="0">
          <layout class="QVBoxLayout" name="verticalLayout_17">
           <item>
@@ -448,6 +455,13 @@
           </item>
          </layout>
         </item>
+        <item row="2" column="0" colspan="2">
+         <widget class="QPushButton" name="buttonCStickAnalog">
+          <property name="text">
+           <string>Set Analog Stick</string>
+          </property>
+         </widget>
+        </item>
        </layout>
       </widget>
      </item>
@@ -543,6 +557,34 @@
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
+      <widget class="QPushButton" name="buttonMotionTouch">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="sizeIncrement">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="baseSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="layoutDirection">
+        <enum>Qt::LeftToRight</enum>
+       </property>
+       <property name="text">
+        <string>Motion / Touch...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
@@ -554,6 +596,34 @@
         </size>
        </property>
       </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonClearAll">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="sizeIncrement">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="baseSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="layoutDirection">
+        <enum>Qt::LeftToRight</enum>
+       </property>
+       <property name="text">
+        <string>Clear All</string>
+       </property>
+      </widget>
      </item>
      <item>
       <widget class="QPushButton" name="buttonRestoreDefaults">

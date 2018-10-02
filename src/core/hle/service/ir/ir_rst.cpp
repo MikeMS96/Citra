@@ -2,32 +2,16 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#include <atomic>
-#include "common/bit_field.h"
 #include "core/core_timing.h"
-#include "core/frontend/input.h"
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/event.h"
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/service/hid/hid.h"
-#include "core/hle/service/ir/ir.h"
 #include "core/hle/service/ir/ir_rst.h"
+#include "core/movie.h"
 #include "core/settings.h"
 
-namespace Service {
-namespace IR {
-
-union PadState {
-    u32_le hex{};
-
-    BitField<14, 1, u32_le> zl;
-    BitField<15, 1, u32_le> zr;
-
-    BitField<24, 1, u32_le> c_stick_right;
-    BitField<25, 1, u32_le> c_stick_left;
-    BitField<26, 1, u32_le> c_stick_up;
-    BitField<27, 1, u32_le> c_stick_down;
-};
+namespace Service::IR {
 
 struct PadDataEntry {
     PadState current_state;
@@ -48,18 +32,7 @@ struct SharedMem {
 
 static_assert(sizeof(SharedMem) == 0x98, "SharedMem has wrong size!");
 
-static Kernel::SharedPtr<Kernel::Event> update_event;
-static Kernel::SharedPtr<Kernel::SharedMemory> shared_memory;
-static u32 next_pad_index;
-static int update_callback_id;
-static std::unique_ptr<Input::ButtonDevice> zl_button;
-static std::unique_ptr<Input::ButtonDevice> zr_button;
-static std::unique_ptr<Input::AnalogDevice> c_stick;
-static std::atomic<bool> is_device_reload_pending;
-static bool raw_c_stick;
-static int update_period;
-
-static void LoadInputDevices() {
+void IR_RST::LoadInputDevices() {
     zl_button = Input::CreateDevice<Input::ButtonDevice>(
         Settings::values.buttons[Settings::NativeButton::ZL]);
     zr_button = Input::CreateDevice<Input::ButtonDevice>(
@@ -68,13 +41,13 @@ static void LoadInputDevices() {
         Settings::values.analogs[Settings::NativeAnalog::CStick]);
 }
 
-static void UnloadInputDevices() {
+void IR_RST::UnloadInputDevices() {
     zl_button = nullptr;
     zr_button = nullptr;
     c_stick = nullptr;
 }
 
-static void UpdateCallback(u64 userdata, int cycles_late) {
+void IR_RST::UpdateCallback(u64 userdata, s64 cycles_late) {
     SharedMem* mem = reinterpret_cast<SharedMem*>(shared_memory->GetPointer());
 
     if (is_device_reload_pending.exchange(false))
@@ -88,8 +61,10 @@ static void UpdateCallback(u64 userdata, int cycles_late) {
     float c_stick_x_f, c_stick_y_f;
     std::tie(c_stick_x_f, c_stick_y_f) = c_stick->GetStatus();
     constexpr int MAX_CSTICK_RADIUS = 0x9C; // Max value for a c-stick radius
-    const s16 c_stick_x = static_cast<s16>(c_stick_x_f * MAX_CSTICK_RADIUS);
-    const s16 c_stick_y = static_cast<s16>(c_stick_y_f * MAX_CSTICK_RADIUS);
+    s16 c_stick_x = static_cast<s16>(c_stick_x_f * MAX_CSTICK_RADIUS);
+    s16 c_stick_y = static_cast<s16>(c_stick_y_f * MAX_CSTICK_RADIUS);
+
+    Core::Movie::GetInstance().HandleIrRst(state, c_stick_x, c_stick_y);
 
     if (!raw_c_stick) {
         const HID::DirectionState direction = HID::GetStickDirectionState(c_stick_x, c_stick_y);
@@ -133,30 +108,15 @@ static void UpdateCallback(u64 userdata, int cycles_late) {
     CoreTiming::ScheduleEvent(msToCycles(update_period) - cycles_late, update_callback_id);
 }
 
-/**
- * IR::GetHandles service function
- *  Outputs:
- *      1 : Result of function, 0 on success, otherwise error code
- *      2 : Translate header, used by the ARM11-kernel
- *      3 : Shared memory handle
- *      4 : Event handle
- */
-static void GetHandles(Interface* self) {
-    IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x01, 0, 0);
+void IR_RST::GetHandles(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x01, 0, 0);
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 3);
     rb.Push(RESULT_SUCCESS);
-    rb.PushMoveHandles(Kernel::g_handle_table.Create(Service::IR::shared_memory).Unwrap(),
-                       Kernel::g_handle_table.Create(Service::IR::update_event).Unwrap());
+    rb.PushMoveObjects(shared_memory, update_event);
 }
 
-/**
- * IR::Initialize service function
- *  Inputs:
- *      1 : pad state update period in ms
- *      2 : bool output raw c-stick data
- */
-static void Initialize(Interface* self) {
-    IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x02, 2, 0);
+void IR_RST::Initialize(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x02, 2, 0);
     update_period = static_cast<int>(rp.Pop<u32>());
     raw_c_stick = rp.Pop<bool>();
 
@@ -170,11 +130,11 @@ static void Initialize(Interface* self) {
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
 
-    LOG_DEBUG(Service_IR, "called. update_period=%d, raw_c_stick=%d", update_period, raw_c_stick);
+    LOG_DEBUG(Service_IR, "called. update_period={}, raw_c_stick={}", update_period, raw_c_stick);
 }
 
-static void Shutdown(Interface* self) {
-    IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x03, 1, 0);
+void IR_RST::Shutdown(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x03, 0, 0);
 
     CoreTiming::UnscheduleEvent(update_callback_id, 0);
     UnloadInputDevices();
@@ -184,18 +144,7 @@ static void Shutdown(Interface* self) {
     LOG_DEBUG(Service_IR, "called");
 }
 
-const Interface::FunctionInfo FunctionTable[] = {
-    {0x00010000, GetHandles, "GetHandles"},
-    {0x00020080, Initialize, "Initialize"},
-    {0x00030000, Shutdown, "Shutdown"},
-    {0x00090000, nullptr, "WriteToTwoFields"},
-};
-
-IR_RST_Interface::IR_RST_Interface() {
-    Register(FunctionTable);
-}
-
-void InitRST() {
+IR_RST::IR_RST() : ServiceFramework("ir:rst", 1) {
     using namespace Kernel;
     // Note: these two kernel objects are even available before Initialize service function is
     // called.
@@ -204,18 +153,24 @@ void InitRST() {
                              0, MemoryRegion::BASE, "IRRST:SharedMemory");
     update_event = Event::Create(ResetType::OneShot, "IRRST:UpdateEvent");
 
-    update_callback_id = CoreTiming::RegisterEvent("IRRST:UpdateCallBack", UpdateCallback);
+    update_callback_id =
+        CoreTiming::RegisterEvent("IRRST:UpdateCallBack", [this](u64 userdata, s64 cycles_late) {
+            UpdateCallback(userdata, cycles_late);
+        });
+
+    static const FunctionInfo functions[] = {
+        {0x00010000, &IR_RST::GetHandles, "GetHandles"},
+        {0x00020080, &IR_RST::Initialize, "Initialize"},
+        {0x00030000, &IR_RST::Shutdown, "Shutdown"},
+        {0x00090000, nullptr, "WriteToTwoFields"},
+    };
+    RegisterHandlers(functions);
 }
 
-void ShutdownRST() {
-    shared_memory = nullptr;
-    update_event = nullptr;
-    UnloadInputDevices();
-}
+IR_RST::~IR_RST() = default;
 
-void ReloadInputDevicesRST() {
+void IR_RST::ReloadInputDevices() {
     is_device_reload_pending.store(true);
 }
 
-} // namespace IR
-} // namespace Service
+} // namespace Service::IR

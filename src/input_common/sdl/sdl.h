@@ -1,19 +1,44 @@
-// Copyright 2017 Citra Emulator Project
+// Copyright 2018 Citra Emulator Project
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
 #pragma once
 
+#include <memory>
+#include <vector>
 #include "core/frontend/input.h"
+#include "input_common/main.h"
 
-namespace InputCommon {
-namespace SDL {
+union SDL_Event;
 
-/// Initializes and registers SDL device factories
-void Init();
+namespace Common {
+class ParamPackage;
+} // namespace Common
 
-/// Unresisters SDL device factories and shut them down.
-void Shutdown();
+namespace InputCommon::Polling {
+class DevicePoller;
+enum class DeviceType;
+} // namespace InputCommon::Polling
 
-} // namespace SDL
-} // namespace InputCommon
+namespace InputCommon::SDL {
+
+class State {
+public:
+    /// Unresisters SDL device factories and shut them down.
+    virtual ~State() = default;
+
+    virtual void GetPollers(
+        InputCommon::Polling::DeviceType type,
+        std::vector<std::unique_ptr<InputCommon::Polling::DevicePoller>>& pollers) = 0;
+};
+
+class NullState : public State {
+public:
+    void GetPollers(
+        InputCommon::Polling::DeviceType type,
+        std::vector<std::unique_ptr<InputCommon::Polling::DevicePoller>>& pollers) override {}
+};
+
+std::unique_ptr<State> Init();
+
+} // namespace InputCommon::SDL

@@ -3,23 +3,15 @@
 // Refer to the license.txt file included.
 
 #include "common/logging/log.h"
-#include "core/hle/service/news/news.h"
 #include "core/hle/service/news/news_s.h"
 #include "core/hle/service/news/news_u.h"
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace NEWS {
+namespace Service::NEWS {
 
-void Init() {
-    using namespace Kernel;
-
-    AddService(new NEWS_S_Interface);
-    AddService(new NEWS_U_Interface);
+void InstallInterfaces(SM::ServiceManager& service_manager) {
+    std::make_shared<NEWS_S>()->InstallAsService(service_manager);
+    std::make_shared<NEWS_U>()->InstallAsService(service_manager);
 }
 
-void Shutdown() {}
-
-} // namespace NEWS
-
-} // namespace Service
+} // namespace Service::NEWS

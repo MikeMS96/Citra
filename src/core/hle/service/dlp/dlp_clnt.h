@@ -6,17 +6,12 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace DLP {
+namespace Service::DLP {
 
-class DLP_CLNT_Interface final : public Interface {
+class DLP_CLNT final : public ServiceFramework<DLP_CLNT> {
 public:
-    DLP_CLNT_Interface();
-
-    std::string GetPortName() const override {
-        return "dlp:CLNT";
-    }
+    DLP_CLNT();
+    ~DLP_CLNT() = default;
 };
 
-} // namespace DLP
-} // namespace Service
+} // namespace Service::DLP

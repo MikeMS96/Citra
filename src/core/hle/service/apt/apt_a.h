@@ -4,19 +4,13 @@
 
 #pragma once
 
-#include "core/hle/service/service.h"
+#include "core/hle/service/apt/apt.h"
 
-namespace Service {
-namespace APT {
+namespace Service::APT {
 
-class APT_A_Interface : public Service::Interface {
+class APT_A final : public Module::Interface {
 public:
-    APT_A_Interface();
-
-    std::string GetPortName() const override {
-        return "APT:A";
-    }
+    explicit APT_A(std::shared_ptr<Module> apt);
 };
 
-} // namespace APT
-} // namespace Service
+} // namespace Service::APT

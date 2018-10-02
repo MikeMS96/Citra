@@ -33,70 +33,70 @@ namespace Shader {
 typedef void (JitShader::*JitFunction)(Instruction instr);
 
 const JitFunction instr_table[64] = {
-    &JitShader::Compile_ADD,   // add
-    &JitShader::Compile_DP3,   // dp3
-    &JitShader::Compile_DP4,   // dp4
-    &JitShader::Compile_DPH,   // dph
-    nullptr,                   // unknown
-    &JitShader::Compile_EX2,   // ex2
-    &JitShader::Compile_LG2,   // lg2
-    nullptr,                   // unknown
-    &JitShader::Compile_MUL,   // mul
-    &JitShader::Compile_SGE,   // sge
-    &JitShader::Compile_SLT,   // slt
-    &JitShader::Compile_FLR,   // flr
-    &JitShader::Compile_MAX,   // max
-    &JitShader::Compile_MIN,   // min
-    &JitShader::Compile_RCP,   // rcp
-    &JitShader::Compile_RSQ,   // rsq
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    &JitShader::Compile_MOVA,  // mova
-    &JitShader::Compile_MOV,   // mov
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    &JitShader::Compile_DPH,   // dphi
-    nullptr,                   // unknown
-    &JitShader::Compile_SGE,   // sgei
-    &JitShader::Compile_SLT,   // slti
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    nullptr,                   // unknown
-    &JitShader::Compile_NOP,   // nop
-    &JitShader::Compile_END,   // end
-    nullptr,                   // break
-    &JitShader::Compile_CALL,  // call
-    &JitShader::Compile_CALLC, // callc
-    &JitShader::Compile_CALLU, // callu
-    &JitShader::Compile_IF,    // ifu
-    &JitShader::Compile_IF,    // ifc
-    &JitShader::Compile_LOOP,  // loop
-    &JitShader::Compile_EMIT,  // emit
-    &JitShader::Compile_SETE,  // sete
-    &JitShader::Compile_JMP,   // jmpc
-    &JitShader::Compile_JMP,   // jmpu
-    &JitShader::Compile_CMP,   // cmp
-    &JitShader::Compile_CMP,   // cmp
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // madi
-    &JitShader::Compile_MAD,   // mad
-    &JitShader::Compile_MAD,   // mad
-    &JitShader::Compile_MAD,   // mad
-    &JitShader::Compile_MAD,   // mad
-    &JitShader::Compile_MAD,   // mad
-    &JitShader::Compile_MAD,   // mad
-    &JitShader::Compile_MAD,   // mad
-    &JitShader::Compile_MAD,   // mad
+    &JitShader::Compile_ADD,    // add
+    &JitShader::Compile_DP3,    // dp3
+    &JitShader::Compile_DP4,    // dp4
+    &JitShader::Compile_DPH,    // dph
+    nullptr,                    // unknown
+    &JitShader::Compile_EX2,    // ex2
+    &JitShader::Compile_LG2,    // lg2
+    nullptr,                    // unknown
+    &JitShader::Compile_MUL,    // mul
+    &JitShader::Compile_SGE,    // sge
+    &JitShader::Compile_SLT,    // slt
+    &JitShader::Compile_FLR,    // flr
+    &JitShader::Compile_MAX,    // max
+    &JitShader::Compile_MIN,    // min
+    &JitShader::Compile_RCP,    // rcp
+    &JitShader::Compile_RSQ,    // rsq
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    &JitShader::Compile_MOVA,   // mova
+    &JitShader::Compile_MOV,    // mov
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    &JitShader::Compile_DPH,    // dphi
+    nullptr,                    // unknown
+    &JitShader::Compile_SGE,    // sgei
+    &JitShader::Compile_SLT,    // slti
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    nullptr,                    // unknown
+    &JitShader::Compile_NOP,    // nop
+    &JitShader::Compile_END,    // end
+    &JitShader::Compile_BREAKC, // breakc
+    &JitShader::Compile_CALL,   // call
+    &JitShader::Compile_CALLC,  // callc
+    &JitShader::Compile_CALLU,  // callu
+    &JitShader::Compile_IF,     // ifu
+    &JitShader::Compile_IF,     // ifc
+    &JitShader::Compile_LOOP,   // loop
+    &JitShader::Compile_EMIT,   // emit
+    &JitShader::Compile_SETE,   // sete
+    &JitShader::Compile_JMP,    // jmpc
+    &JitShader::Compile_JMP,    // jmpu
+    &JitShader::Compile_CMP,    // cmp
+    &JitShader::Compile_CMP,    // cmp
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // madi
+    &JitShader::Compile_MAD,    // mad
+    &JitShader::Compile_MAD,    // mad
+    &JitShader::Compile_MAD,    // mad
+    &JitShader::Compile_MAD,    // mad
+    &JitShader::Compile_MAD,    // mad
+    &JitShader::Compile_MAD,    // mad
+    &JitShader::Compile_MAD,    // mad
+    &JitShader::Compile_MAD,    // mad
 };
 
 // The following is used to alias some commonly used registers. Generally, RAX-RDX and XMM0-XMM3 can
@@ -104,7 +104,7 @@ const JitFunction instr_table[64] = {
 // purposes, as documented below:
 
 /// Pointer to the uniform memory
-static const Reg64 SETUP = r9;
+static const Reg64 UNIFORMS = r9;
 /// The two 32-bit VS address offset registers set by the MOVA instruction
 static const Reg64 ADDROFFS_REG_0 = r10;
 static const Reg64 ADDROFFS_REG_1 = r11;
@@ -139,13 +139,20 @@ static const Xmm NEGBIT = xmm15;
 // Scratch registers, e.g., SRC1 and SCRATCH, have to be saved on the side if needed
 static const BitSet32 persistent_regs = BuildRegSet({
     // Pointers to register blocks
-    SETUP, STATE,
+    UNIFORMS,
+    STATE,
     // Cached registers
-    ADDROFFS_REG_0, ADDROFFS_REG_1, LOOPCOUNT_REG, COND0, COND1,
+    ADDROFFS_REG_0,
+    ADDROFFS_REG_1,
+    LOOPCOUNT_REG,
+    COND0,
+    COND1,
     // Constants
-    ONE, NEGBIT,
+    ONE,
+    NEGBIT,
     // Loop variables
-    LOOPCOUNT, LOOPINC,
+    LOOPCOUNT,
+    LOOPINC,
 });
 
 /// Raw constant for the source register selector that indicates no swizzling is performed
@@ -154,12 +161,12 @@ static const u8 NO_SRC_REG_SWIZZLE = 0x1b;
 static const u8 NO_DEST_REG_MASK = 0xf;
 
 static void LogCritical(const char* msg) {
-    LOG_CRITICAL(HW_GPU, "%s", msg);
+    LOG_CRITICAL(HW_GPU, "{}", msg);
 }
 
 void JitShader::Compile_Assert(bool condition, const char* msg) {
     if (!condition) {
-        mov(ABI_PARAM1, reinterpret_cast<size_t>(msg));
+        mov(ABI_PARAM1, reinterpret_cast<std::size_t>(msg));
         CallFarFunction(*this, LogCritical);
     }
 }
@@ -174,11 +181,11 @@ void JitShader::Compile_Assert(bool condition, const char* msg) {
 void JitShader::Compile_SwizzleSrc(Instruction instr, unsigned src_num, SourceRegister src_reg,
                                    Xmm dest) {
     Reg64 src_ptr;
-    size_t src_offset;
+    std::size_t src_offset;
 
     if (src_reg.GetRegisterType() == RegisterType::FloatUniform) {
-        src_ptr = SETUP;
-        src_offset = ShaderSetup::GetFloatUniformOffset(src_reg.GetIndex());
+        src_ptr = UNIFORMS;
+        src_offset = Uniforms::GetFloatUniformOffset(src_reg.GetIndex());
     } else {
         src_ptr = STATE;
         src_offset = UnitState::InputOffset(src_reg);
@@ -259,7 +266,7 @@ void JitShader::Compile_DestEnable(Instruction instr, Xmm src) {
 
     SwizzlePattern swiz = {(*swizzle_data)[operand_desc_id]};
 
-    size_t dest_offset_disp = UnitState::OutputOffset(dest);
+    std::size_t dest_offset_disp = UnitState::OutputOffset(dest);
 
     // If all components are enabled, write the result to the destination register
     if (swiz.dest_mask == NO_DEST_REG_MASK) {
@@ -347,8 +354,8 @@ void JitShader::Compile_EvaluateCondition(Instruction instr) {
 }
 
 void JitShader::Compile_UniformCondition(Instruction instr) {
-    size_t offset = ShaderSetup::GetBoolUniformOffset(instr.flow_control.bool_uniform_id);
-    cmp(byte[SETUP + offset], 0);
+    std::size_t offset = Uniforms::GetBoolUniformOffset(instr.flow_control.bool_uniform_id);
+    cmp(byte[UNIFORMS + offset], 0);
 }
 
 BitSet32 JitShader::PersistentCallerSavedRegs() {
@@ -387,13 +394,8 @@ void JitShader::Compile_DP4(Instruction instr) {
 
     Compile_SanitizedMul(SRC1, SRC2, SCRATCH);
 
-    movaps(SRC2, SRC1);
-    shufps(SRC1, SRC1, _MM_SHUFFLE(2, 3, 0, 1)); // XYZW -> ZWXY
-    addps(SRC1, SRC2);
-
-    movaps(SRC2, SRC1);
-    shufps(SRC1, SRC1, _MM_SHUFFLE(0, 1, 2, 3)); // XYZW -> WZYX
-    addps(SRC1, SRC2);
+    haddps(SRC1, SRC1);
+    haddps(SRC1, SRC1);
 
     Compile_DestEnable(instr, SRC1);
 }
@@ -419,40 +421,21 @@ void JitShader::Compile_DPH(Instruction instr) {
 
     Compile_SanitizedMul(SRC1, SRC2, SCRATCH);
 
-    movaps(SRC2, SRC1);
-    shufps(SRC1, SRC1, _MM_SHUFFLE(2, 3, 0, 1)); // XYZW -> ZWXY
-    addps(SRC1, SRC2);
-
-    movaps(SRC2, SRC1);
-    shufps(SRC1, SRC1, _MM_SHUFFLE(0, 1, 2, 3)); // XYZW -> WZYX
-    addps(SRC1, SRC2);
+    haddps(SRC1, SRC1);
+    haddps(SRC1, SRC1);
 
     Compile_DestEnable(instr, SRC1);
 }
 
 void JitShader::Compile_EX2(Instruction instr) {
     Compile_SwizzleSrc(instr, 1, instr.common.src1, SRC1);
-    movss(xmm0, SRC1); // ABI_PARAM1
-
-    ABI_PushRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
-    CallFarFunction(*this, exp2f);
-    ABI_PopRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
-
-    shufps(xmm0, xmm0, _MM_SHUFFLE(0, 0, 0, 0)); // ABI_RETURN
-    movaps(SRC1, xmm0);
+    call(exp2_subroutine);
     Compile_DestEnable(instr, SRC1);
 }
 
 void JitShader::Compile_LG2(Instruction instr) {
     Compile_SwizzleSrc(instr, 1, instr.common.src1, SRC1);
-    movss(xmm0, SRC1); // ABI_PARAM1
-
-    ABI_PushRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
-    CallFarFunction(*this, log2f);
-    ABI_PopRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
-
-    shufps(xmm0, xmm0, _MM_SHUFFLE(0, 0, 0, 0)); // ABI_RETURN
-    movaps(SRC1, xmm0);
+    call(log2_subroutine);
     Compile_DestEnable(instr, SRC1);
 }
 
@@ -597,8 +580,28 @@ void JitShader::Compile_RSQ(Instruction instr) {
 void JitShader::Compile_NOP(Instruction instr) {}
 
 void JitShader::Compile_END(Instruction instr) {
+    // Save conditional code
+    mov(byte[STATE + offsetof(UnitState, conditional_code[0])], COND0.cvt8());
+    mov(byte[STATE + offsetof(UnitState, conditional_code[1])], COND1.cvt8());
+
+    // Save address/loop registers
+    sar(ADDROFFS_REG_0, 4);
+    sar(ADDROFFS_REG_1, 4);
+    sar(LOOPCOUNT_REG, 4);
+    mov(dword[STATE + offsetof(UnitState, address_registers[0])], ADDROFFS_REG_0.cvt32());
+    mov(dword[STATE + offsetof(UnitState, address_registers[1])], ADDROFFS_REG_1.cvt32());
+    mov(dword[STATE + offsetof(UnitState, address_registers[2])], LOOPCOUNT_REG);
+
     ABI_PopRegistersAndAdjustStack(*this, ABI_ALL_CALLEE_SAVED, 8, 16);
     ret();
+}
+
+void JitShader::Compile_BREAKC(Instruction instr) {
+    Compile_Assert(looping, "BREAKC must be inside a LOOP");
+    if (looping) {
+        Compile_EvaluateCondition(instr);
+        jnz(*loop_break_label);
+    }
 }
 
 void JitShader::Compile_CALL(Instruction instr) {
@@ -730,8 +733,8 @@ void JitShader::Compile_LOOP(Instruction instr) {
     // This decodes the fields from the integer uniform at index instr.flow_control.int_uniform_id.
     // The Y (LOOPCOUNT_REG) and Z (LOOPINC) component are kept multiplied by 16 (Left shifted by
     // 4 bits) to be used as an offset into the 16-byte vector registers later
-    size_t offset = ShaderSetup::GetIntUniformOffset(instr.flow_control.int_uniform_id);
-    mov(LOOPCOUNT, dword[SETUP + offset]);
+    std::size_t offset = Uniforms::GetIntUniformOffset(instr.flow_control.int_uniform_id);
+    mov(LOOPCOUNT, dword[UNIFORMS + offset]);
     mov(LOOPCOUNT_REG, LOOPCOUNT);
     shr(LOOPCOUNT_REG, 4);
     and_(LOOPCOUNT_REG, 0xFF0); // Y-component is the start
@@ -744,11 +747,14 @@ void JitShader::Compile_LOOP(Instruction instr) {
     Label l_loop_start;
     L(l_loop_start);
 
+    loop_break_label = Xbyak::Label();
     Compile_Block(instr.flow_control.dest_offset + 1);
 
     add(LOOPCOUNT_REG, LOOPINC); // Increment LOOPCOUNT_REG by Z-component
     sub(LOOPCOUNT, 1);           // Increment loop count by 1
     jnz(l_loop_start);           // Loop if not equal
+    L(*loop_break_label);
+    loop_break_label = boost::none;
 
     looping = false;
 }
@@ -783,7 +789,7 @@ void JitShader::Compile_EMIT(Instruction instr) {
     jnz(have_emitter);
 
     ABI_PushRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
-    mov(ABI_PARAM1, reinterpret_cast<size_t>("Execute EMIT on VS"));
+    mov(ABI_PARAM1, reinterpret_cast<std::size_t>("Execute EMIT on VS"));
     CallFarFunction(*this, LogCritical);
     ABI_PopRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
     jmp(end);
@@ -805,7 +811,7 @@ void JitShader::Compile_SETE(Instruction instr) {
     jnz(have_emitter);
 
     ABI_PushRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
-    mov(ABI_PARAM1, reinterpret_cast<size_t>("Execute SETEMIT on VS"));
+    mov(ABI_PARAM1, reinterpret_cast<std::size_t>("Execute SETEMIT on VS"));
     CallFarFunction(*this, LogCritical);
     ABI_PopRegistersAndAdjustStack(*this, PersistentCallerSavedRegs(), 0);
     jmp(end);
@@ -852,7 +858,7 @@ void JitShader::Compile_NextInstr() {
         ((*this).*instr_func)(instr);
     } else {
         // Unhandled instruction
-        LOG_CRITICAL(HW_GPU, "Unhandled instruction: 0x%02x (0x%08x)",
+        LOG_CRITICAL(HW_GPU, "Unhandled instruction: 0x{:02x} (0x{:08x})",
                      static_cast<u32>(instr.opcode.Value().EffectiveOpCode()), instr.hex);
     }
 }
@@ -860,7 +866,7 @@ void JitShader::Compile_NextInstr() {
 void JitShader::FindReturnOffsets() {
     return_offsets.clear();
 
-    for (size_t offset = 0; offset < program_code->size(); ++offset) {
+    for (std::size_t offset = 0; offset < program_code->size(); ++offset) {
         Instruction instr = {(*program_code)[offset]};
 
         switch (instr.opcode.Value()) {
@@ -899,22 +905,29 @@ void JitShader::Compile(const std::array<u32, MAX_PROGRAM_CODE_LENGTH>* program_
     ABI_PushRegistersAndAdjustStack(*this, ABI_ALL_CALLEE_SAVED, 8, 16);
     mov(qword[rsp + 8], 0xFFFFFFFFFFFFFFFFULL);
 
-    mov(SETUP, ABI_PARAM1);
+    mov(UNIFORMS, ABI_PARAM1);
     mov(STATE, ABI_PARAM2);
 
-    // Zero address/loop  registers
-    xor_(ADDROFFS_REG_0.cvt32(), ADDROFFS_REG_0.cvt32());
-    xor_(ADDROFFS_REG_1.cvt32(), ADDROFFS_REG_1.cvt32());
-    xor_(LOOPCOUNT_REG, LOOPCOUNT_REG);
+    // Load address/loop registers
+    movsxd(ADDROFFS_REG_0, dword[STATE + offsetof(UnitState, address_registers[0])]);
+    movsxd(ADDROFFS_REG_1, dword[STATE + offsetof(UnitState, address_registers[1])]);
+    mov(LOOPCOUNT_REG, dword[STATE + offsetof(UnitState, address_registers[2])]);
+    shl(ADDROFFS_REG_0, 4);
+    shl(ADDROFFS_REG_1, 4);
+    shl(LOOPCOUNT_REG, 4);
+
+    // Load conditional code
+    mov(COND0, byte[STATE + offsetof(UnitState, conditional_code[0])]);
+    mov(COND1, byte[STATE + offsetof(UnitState, conditional_code[1])]);
 
     // Used to set a register to one
     static const __m128 one = {1.f, 1.f, 1.f, 1.f};
-    mov(rax, reinterpret_cast<size_t>(&one));
+    mov(rax, reinterpret_cast<std::size_t>(&one));
     movaps(ONE, xword[rax]);
 
     // Used to negate registers
     static const __m128 neg = {-0.f, -0.f, -0.f, -0.f};
-    mov(rax, reinterpret_cast<size_t>(&neg));
+    mov(rax, reinterpret_cast<std::size_t>(&neg));
     movaps(NEGBIT, xword[rax]);
 
     // Jump to start of the shader program
@@ -932,10 +945,182 @@ void JitShader::Compile(const std::array<u32, MAX_PROGRAM_CODE_LENGTH>* program_
     ready();
 
     ASSERT_MSG(getSize() <= MAX_SHADER_SIZE, "Compiled a shader that exceeds the allocated size!");
-    LOG_DEBUG(HW_GPU, "Compiled shader size=%lu", getSize());
+    LOG_DEBUG(HW_GPU, "Compiled shader size={}", getSize());
 }
 
-JitShader::JitShader() : Xbyak::CodeGenerator(MAX_SHADER_SIZE) {}
+JitShader::JitShader() : Xbyak::CodeGenerator(MAX_SHADER_SIZE) {
+    CompilePrelude();
+}
+
+void JitShader::CompilePrelude() {
+    log2_subroutine = CompilePrelude_Log2();
+    exp2_subroutine = CompilePrelude_Exp2();
+}
+
+Xbyak::Label JitShader::CompilePrelude_Log2() {
+    Xbyak::Label subroutine;
+
+    // SSE does not have a log instruction, thus we must approximate.
+    // We perform this approximation first performaing a range reduction into the range [1.0, 2.0).
+    // A minimax polynomial which was fit for the function log2(x) / (x - 1) is then evaluated.
+    // We multiply the result by (x - 1) then restore the result into the appropriate range.
+
+    // Coefficients for the minimax polynomial.
+    // f(x) computes approximately log2(x) / (x - 1).
+    // f(x) = c4 + x * (c3 + x * (c2 + x * (c1 + x * c0)).
+    align(64);
+    const void* c0 = getCurr();
+    dd(0x3d74552f);
+    const void* c1 = getCurr();
+    dd(0xbeee7397);
+    const void* c2 = getCurr();
+    dd(0x3fbd96dd);
+    const void* c3 = getCurr();
+    dd(0xc02153f6);
+    const void* c4 = getCurr();
+    dd(0x4038d96c);
+
+    align(16);
+    const void* negative_infinity_vector = getCurr();
+    dd(0xff800000);
+    dd(0xff800000);
+    dd(0xff800000);
+    dd(0xff800000);
+    const void* default_qnan_vector = getCurr();
+    dd(0x7fc00000);
+    dd(0x7fc00000);
+    dd(0x7fc00000);
+    dd(0x7fc00000);
+
+    Xbyak::Label input_is_nan, input_is_zero, input_out_of_range;
+
+    align(16);
+    L(input_out_of_range);
+    je(input_is_zero);
+    movaps(SRC1, xword[rip + default_qnan_vector]);
+    ret();
+    L(input_is_zero);
+    movaps(SRC1, xword[rip + negative_infinity_vector]);
+    ret();
+
+    align(16);
+    L(subroutine);
+
+    // Here we handle edge cases: input in {NaN, 0, -Inf, Negative}.
+    xorps(SCRATCH, SCRATCH);
+    ucomiss(SCRATCH, SRC1);
+    jp(input_is_nan);
+    jae(input_out_of_range);
+
+    // Split input
+    movd(eax, SRC1);
+    mov(edx, eax);
+    and_(eax, 0x7f800000);
+    and_(edx, 0x007fffff);
+    movss(SCRATCH, xword[rip + c0]); // Preload c0.
+    or_(edx, 0x3f800000);
+    movd(SRC1, edx);
+    // SRC1 now contains the mantissa of the input.
+    mulss(SCRATCH, SRC1);
+    shr(eax, 23);
+    sub(eax, 0x7f);
+    cvtsi2ss(SCRATCH2, eax);
+    // SCRATCH2 now contains the exponent of the input.
+
+    // Complete computation of polynomial
+    addss(SCRATCH, xword[rip + c1]);
+    mulss(SCRATCH, SRC1);
+    addss(SCRATCH, xword[rip + c2]);
+    mulss(SCRATCH, SRC1);
+    addss(SCRATCH, xword[rip + c3]);
+    mulss(SCRATCH, SRC1);
+    subss(SRC1, ONE);
+    addss(SCRATCH, xword[rip + c4]);
+    mulss(SCRATCH, SRC1);
+    addss(SCRATCH2, SCRATCH);
+
+    // Duplicate result across vector
+    xorps(SRC1, SRC1); // break dependency chain
+    movss(SRC1, SCRATCH2);
+    L(input_is_nan);
+    shufps(SRC1, SRC1, _MM_SHUFFLE(0, 0, 0, 0));
+
+    ret();
+
+    return subroutine;
+}
+
+Xbyak::Label JitShader::CompilePrelude_Exp2() {
+    Xbyak::Label subroutine;
+
+    // SSE does not have a exp instruction, thus we must approximate.
+    // We perform this approximation first performaing a range reduction into the range [-0.5, 0.5).
+    // A minimax polynomial which was fit for the function exp2(x) is then evaluated.
+    // We then restore the result into the appropriate range.
+
+    align(64);
+    const void* input_max = getCurr();
+    dd(0x43010000);
+    const void* input_min = getCurr();
+    dd(0xc2fdffff);
+    const void* c0 = getCurr();
+    dd(0x3c5dbe69);
+    const void* half = getCurr();
+    dd(0x3f000000);
+    const void* c1 = getCurr();
+    dd(0x3d5509f9);
+    const void* c2 = getCurr();
+    dd(0x3e773cc5);
+    const void* c3 = getCurr();
+    dd(0x3f3168b3);
+    const void* c4 = getCurr();
+    dd(0x3f800016);
+
+    Xbyak::Label ret_label;
+
+    align(16);
+    L(subroutine);
+
+    // Handle edge cases
+    ucomiss(SRC1, SRC1);
+    jp(ret_label);
+    // Clamp to maximum range since we shift the value directly into the exponent.
+    minss(SRC1, xword[rip + input_max]);
+    maxss(SRC1, xword[rip + input_min]);
+
+    // Decompose input
+    movss(SCRATCH, SRC1);
+    movss(SCRATCH2, xword[rip + c0]); // Preload c0.
+    subss(SCRATCH, xword[rip + half]);
+    cvtss2si(eax, SCRATCH);
+    cvtsi2ss(SCRATCH, eax);
+    // SCRATCH now contains input rounded to the nearest integer.
+    add(eax, 0x7f);
+    subss(SRC1, SCRATCH);
+    // SRC1 contains input - round(input), which is in [-0.5, 0.5).
+    mulss(SCRATCH2, SRC1);
+    shl(eax, 23);
+    movd(SCRATCH, eax);
+    // SCRATCH contains 2^(round(input)).
+
+    // Complete computation of polynomial.
+    addss(SCRATCH2, xword[rip + c1]);
+    mulss(SCRATCH2, SRC1);
+    addss(SCRATCH2, xword[rip + c2]);
+    mulss(SCRATCH2, SRC1);
+    addss(SCRATCH2, xword[rip + c3]);
+    mulss(SRC1, SCRATCH2);
+    addss(SRC1, xword[rip + c4]);
+    mulss(SRC1, SCRATCH);
+
+    // Duplicate result across vector
+    L(ret_label);
+    shufps(SRC1, SRC1, _MM_SHUFFLE(0, 0, 0, 0));
+
+    ret();
+
+    return subroutine;
+}
 
 } // namespace Shader
 

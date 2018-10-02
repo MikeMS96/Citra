@@ -20,12 +20,6 @@ class ArchiveFactory_ExtSaveData final : public ArchiveFactory {
 public:
     ArchiveFactory_ExtSaveData(const std::string& mount_point, bool shared);
 
-    /**
-     * Initialize the archive.
-     * @return true if it initialized successfully
-     */
-    bool Initialize();
-
     std::string GetName() const override {
         return "ExtSaveData";
     }
@@ -44,7 +38,7 @@ public:
      * @param icon_data Binary data of the icon
      * @param icon_size Size of the icon data
      */
-    void WriteIcon(const Path& path, const u8* icon_data, size_t icon_size);
+    void WriteIcon(const Path& path, const u8* icon_data, std::size_t icon_size);
 
 private:
     bool shared; ///< Whether this archive represents an ExtSaveData archive or a SharedExtSaveData
@@ -56,6 +50,9 @@ private:
      * See GetExtSaveDataPath for the code that extracts this data from an archive path.
      */
     std::string mount_point;
+
+    /// Returns a path with the correct SaveIdHigh value for Shared extdata paths.
+    Path GetCorrectedPath(const Path& path);
 };
 
 /**

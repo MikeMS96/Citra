@@ -4,19 +4,13 @@
 
 #pragma once
 
-#include "core/hle/service/service.h"
+#include "core/hle/service/hid/hid.h"
 
-namespace Service {
-namespace HID {
+namespace Service::HID {
 
-class HID_SPVR_Interface : public Service::Interface {
+class Spvr final : public Module::Interface {
 public:
-    HID_SPVR_Interface();
-
-    std::string GetPortName() const override {
-        return "hid:SPVR";
-    }
+    explicit Spvr(std::shared_ptr<Module> hid);
 };
 
-} // namespace HID
-} // namespace Service
+} // namespace Service::HID

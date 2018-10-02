@@ -7,6 +7,7 @@
 #include "common/alignment.h"
 #include "common/file_util.h"
 #include "common/logging/log.h"
+#include "core/file_sys/cia_common.h"
 #include "core/file_sys/title_metadata.h"
 #include "core/loader/loader.h"
 
@@ -14,24 +15,6 @@
 // FileSys namespace
 
 namespace FileSys {
-
-static u32 GetSignatureSize(u32 signature_type) {
-    switch (signature_type) {
-    case Rsa4096Sha1:
-    case Rsa4096Sha256:
-        return 0x200;
-
-    case Rsa2048Sha1:
-    case Rsa2048Sha256:
-        return 0x100;
-
-    case EllipticSha1:
-    case EcdsaSha256:
-        return 0x3C;
-    }
-
-    return 0;
-}
 
 Loader::ResultStatus TitleMetadata::Load(const std::string& file_path) {
     FileUtil::IOFile file(file_path, "rb");
@@ -45,13 +28,13 @@ Loader::ResultStatus TitleMetadata::Load(const std::string& file_path) {
 
     Loader::ResultStatus result = Load(file_data);
     if (result != Loader::ResultStatus::Success)
-        LOG_ERROR(Service_FS, "Failed to load TMD from file %s!", file_path.c_str());
+        LOG_ERROR(Service_FS, "Failed to load TMD from file {}!", file_path);
 
     return result;
 }
 
-Loader::ResultStatus TitleMetadata::Load(const std::vector<u8> file_data, size_t offset) {
-    size_t total_size = static_cast<size_t>(file_data.size() - offset);
+Loader::ResultStatus TitleMetadata::Load(const std::vector<u8> file_data, std::size_t offset) {
+    std::size_t total_size = static_cast<std::size_t>(file_data.size() - offset);
     if (total_size < sizeof(u32_be))
         return Loader::ResultStatus::Error;
 
@@ -61,8 +44,8 @@ Loader::ResultStatus TitleMetadata::Load(const std::vector<u8> file_data, size_t
     u32 signature_size = GetSignatureSize(signature_type);
 
     // The TMD body start position is rounded to the nearest 0x40 after the signature
-    size_t body_start = Common::AlignUp(signature_size + sizeof(u32), 0x40);
-    size_t body_end = body_start + sizeof(Body);
+    std::size_t body_start = Common::AlignUp(signature_size + sizeof(u32), 0x40);
+    std::size_t body_end = body_start + sizeof(Body);
 
     if (total_size < body_end)
         return Loader::ResultStatus::Error;
@@ -72,10 +55,10 @@ Loader::ResultStatus TitleMetadata::Load(const std::vector<u8> file_data, size_t
     memcpy(tmd_signature.data(), &file_data[offset + sizeof(u32_be)], signature_size);
     memcpy(&tmd_body, &file_data[offset + body_start], sizeof(TitleMetadata::Body));
 
-    size_t expected_size =
-        body_start + sizeof(Body) + tmd_body.content_count * sizeof(ContentChunk);
+    std::size_t expected_size =
+        body_start + sizeof(Body) + static_cast<u16>(tmd_body.content_count) * sizeof(ContentChunk);
     if (total_size < expected_size) {
-        LOG_ERROR(Service_FS, "Malformed TMD, expected size 0x%zx, got 0x%zx!", expected_size,
+        LOG_ERROR(Service_FS, "Malformed TMD, expected size 0x{:x}, got 0x{:x}!", expected_size,
                   total_size);
         return Loader::ResultStatus::ErrorInvalidFormat;
     }
@@ -106,7 +89,7 @@ Loader::ResultStatus TitleMetadata::Save(const std::string& file_path) {
         return Loader::ResultStatus::Error;
 
     // The TMD body start position is rounded to the nearest 0x40 after the signature
-    size_t body_start = Common::AlignUp(signature_size + sizeof(u32), 0x40);
+    std::size_t body_start = Common::AlignUp(signature_size + sizeof(u32), 0x40);
     file.Seek(body_start, SEEK_SET);
 
     // Update our TMD body values and hashes
@@ -126,7 +109,7 @@ Loader::ResultStatus TitleMetadata::Save(const std::string& file_path) {
     chunk_hash.Final(tmd_body.contentinfo[0].hash.data());
 
     CryptoPP::SHA256 contentinfo_hash;
-    for (size_t i = 0; i < tmd_body.contentinfo.size(); i++) {
+    for (std::size_t i = 0; i < tmd_body.contentinfo.size(); i++) {
         chunk_hash.Update(reinterpret_cast<u8*>(&tmd_body.contentinfo[i]), sizeof(ContentInfo));
     }
     chunk_hash.Final(tmd_body.contentinfo_hash.data());
@@ -188,6 +171,12 @@ u64 TitleMetadata::GetContentSizeByIndex(u16 index) const {
     return tmd_chunks[index].size;
 }
 
+std::array<u8, 16> TitleMetadata::GetContentCTRByIndex(u16 index) const {
+    std::array<u8, 16> ctr{};
+    std::memcpy(ctr.data(), &tmd_chunks[index].index, sizeof(u16));
+    return ctr;
+}
+
 void TitleMetadata::SetTitleID(u64 title_id) {
     tmd_body.title_id = title_id;
 }
@@ -209,35 +198,35 @@ void TitleMetadata::AddContentChunk(const ContentChunk& chunk) {
 }
 
 void TitleMetadata::Print() const {
-    LOG_DEBUG(Service_FS, "%u chunks", static_cast<u32>(tmd_body.content_count));
+    LOG_DEBUG(Service_FS, "{} chunks", static_cast<u32>(tmd_body.content_count));
 
     // Content info describes ranges of content chunks
     LOG_DEBUG(Service_FS, "Content info:");
-    for (size_t i = 0; i < tmd_body.contentinfo.size(); i++) {
+    for (std::size_t i = 0; i < tmd_body.contentinfo.size(); i++) {
         if (tmd_body.contentinfo[i].command_count == 0)
             break;
 
-        LOG_DEBUG(Service_FS, "    Index %04X, Command Count %04X",
+        LOG_DEBUG(Service_FS, "    Index {:04X}, Command Count {:04X}",
                   static_cast<u32>(tmd_body.contentinfo[i].index),
                   static_cast<u32>(tmd_body.contentinfo[i].command_count));
     }
 
     // For each content info, print their content chunk range
-    for (size_t i = 0; i < tmd_body.contentinfo.size(); i++) {
+    for (std::size_t i = 0; i < tmd_body.contentinfo.size(); i++) {
         u16 index = static_cast<u16>(tmd_body.contentinfo[i].index);
         u16 count = static_cast<u16>(tmd_body.contentinfo[i].command_count);
 
         if (count == 0)
             continue;
 
-        LOG_DEBUG(Service_FS, "Content chunks for content info index %zu:", i);
+        LOG_DEBUG(Service_FS, "Content chunks for content info index {}:", i);
         for (u16 j = index; j < index + count; j++) {
             // Don't attempt to print content we don't have
             if (j > tmd_body.content_count)
                 break;
 
             const ContentChunk& chunk = tmd_chunks[j];
-            LOG_DEBUG(Service_FS, "    ID %08X, Index %04X, Type %04x, Size %016" PRIX64,
+            LOG_DEBUG(Service_FS, "    ID {:08X}, Index {:04X}, Type {:04x}, Size {:016X}",
                       static_cast<u32>(chunk.id), static_cast<u32>(chunk.index),
                       static_cast<u32>(chunk.type), static_cast<u64>(chunk.size));
         }

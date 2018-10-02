@@ -4,17 +4,14 @@
 
 #include "core/hle/service/nwm/nwm_sap.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
-/*
-const Interface::FunctionInfo FunctionTable[] = {
-};
-*/
-
-NWM_SAP::NWM_SAP() {
-    // Register(FunctionTable);
+NWM_SAP::NWM_SAP() : ServiceFramework("nwm::SAP") {
+    /*
+    static const FunctionInfo functions[] = {
+    };
+    RegisterHandlers(functions);
+    */
 }
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

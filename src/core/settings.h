@@ -6,10 +6,16 @@
 
 #include <array>
 #include <string>
+#include <unordered_map>
 #include "common/common_types.h"
 #include "core/hle/service/cam/cam.h"
 
 namespace Settings {
+
+enum class InitClock {
+    SystemTime = 0,
+    FixedTime = 1,
+};
 
 enum class LayoutOption {
     Default,
@@ -54,9 +60,21 @@ constexpr int NUM_BUTTONS_IR = BUTTON_IR_END - BUTTON_IR_BEGIN;
 constexpr int NUM_BUTTONS_NS = BUTTON_NS_END - BUTTON_NS_BEGIN;
 
 static const std::array<const char*, NumButtons> mapping = {{
-    "button_a", "button_b", "button_x", "button_y", "button_up", "button_down", "button_left",
-    "button_right", "button_l", "button_r", "button_start", "button_select", "button_zl",
-    "button_zr", "button_home",
+    "button_a",
+    "button_b",
+    "button_x",
+    "button_y",
+    "button_up",
+    "button_down",
+    "button_left",
+    "button_right",
+    "button_l",
+    "button_r",
+    "button_start",
+    "button_select",
+    "button_zl",
+    "button_zr",
+    "button_home",
 }};
 } // namespace NativeButton
 
@@ -69,7 +87,8 @@ enum Values {
 };
 
 static const std::array<const char*, NumAnalogs> mapping = {{
-    "circle_pad", "c_stick",
+    "circle_pad",
+    "c_stick",
 }};
 } // namespace NativeAnalog
 
@@ -82,6 +101,9 @@ struct Values {
     std::array<std::string, NativeAnalog::NumAnalogs> analogs;
     std::string motion_device;
     std::string touch_device;
+    std::string udp_input_address;
+    u16 udp_input_port;
+    u8 udp_pad_index;
 
     // Core
     bool use_cpu_jit;
@@ -89,15 +111,21 @@ struct Values {
     // Data Storage
     bool use_virtual_sd;
 
-    // System Region
+    // System
     int region_value;
+    InitClock init_clock;
+    u64 init_time;
 
     // Renderer
     bool use_hw_renderer;
+    bool use_hw_shader;
+    bool shaders_accurate_gs;
+    bool shaders_accurate_mul;
     bool use_shader_jit;
-    float resolution_factor;
+    u16 resolution_factor;
     bool use_vsync;
-    bool toggle_framelimit;
+    bool use_frame_limit;
+    u16 frame_limit;
 
     LayoutOption layout_option;
     bool swap_screen;
@@ -115,25 +143,29 @@ struct Values {
     float bg_green;
     float bg_blue;
 
-    std::string log_filter;
+    bool toggle_3d;
+    u8 factor_3d;
 
     // Audio
     std::string sink_id;
     bool enable_audio_stretching;
     std::string audio_device_id;
+    float volume;
 
     // Camera
     std::array<std::string, Service::CAM::NumCameras> camera_name;
     std::array<std::string, Service::CAM::NumCameras> camera_config;
+    std::array<int, Service::CAM::NumCameras> camera_flip;
 
     // Debugging
     bool use_gdbstub;
     u16 gdbstub_port;
+    std::string log_filter;
+    std::unordered_map<std::string, bool> lle_modules;
 
     // WebService
     bool enable_telemetry;
-    std::string telemetry_endpoint_url;
-    std::string verify_endpoint_url;
+    std::string web_api_url;
     std::string citra_username;
     std::string citra_token;
 } extern values;
@@ -143,4 +175,5 @@ struct Values {
 static constexpr int REGION_VALUE_AUTO_SELECT = -1;
 
 void Apply();
+void LogSettings();
 } // namespace Settings

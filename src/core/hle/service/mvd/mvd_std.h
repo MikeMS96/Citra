@@ -6,17 +6,12 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace MVD {
+namespace Service::MVD {
 
-class MVD_STD final : public Interface {
+class MVD_STD final : public ServiceFramework<MVD_STD> {
 public:
     MVD_STD();
-
-    std::string GetPortName() const override {
-        return "mvd:std";
-    }
+    ~MVD_STD() = default;
 };
 
-} // namespace MVD
-} // namespace Service
+} // namespace Service::MVD

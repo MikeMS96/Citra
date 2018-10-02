@@ -2,7 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#include <catch.hpp>
+#include <catch2/catch.hpp>
 
 #include "core/arm/dyncom/arm_dyncom.h"
 #include "core/core_timing.h"
@@ -34,7 +34,7 @@ TEST_CASE("ARM_DynCom (vfp): vadd", "[arm_dyncom]") {
         dyncom.SetVFPSystemReg(VFP_FPSCR, test_case.initial_fpscr);
         dyncom.SetVFPReg(4, test_case.a);
         dyncom.SetVFPReg(6, test_case.b);
-        dyncom.ExecuteInstructions(1);
+        dyncom.Step();
         if (dyncom.GetVFPReg(2) != test_case.result ||
             dyncom.GetVFPSystemReg(VFP_FPSCR) != test_case.final_fpscr) {
             printf("f: %x\n", test_case.initial_fpscr);

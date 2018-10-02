@@ -6,17 +6,12 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace QTM {
+namespace Service::QTM {
 
-class QTM_SP final : public Interface {
+class QTM_SP final : public ServiceFramework<QTM_SP> {
 public:
     QTM_SP();
-
-    std::string GetPortName() const override {
-        return "qtm:sp";
-    }
+    ~QTM_SP() = default;
 };
 
-} // namespace QTM
-} // namespace Service
+} // namespace Service::QTM

@@ -6,17 +6,30 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace ERR {
+namespace Kernel {
+class HLERequestContext;
+}
 
-class ERR_F final : public Interface {
+namespace Service::ERR {
+
+/// Interface to "err:f" service
+class ERR_F final : public ServiceFramework<ERR_F> {
 public:
     ERR_F();
+    ~ERR_F();
 
-    std::string GetPortName() const override {
-        return "err:f";
-    }
+private:
+    /* ThrowFatalError function
+     * Inputs:
+     *       0 : Header code [0x00010800]
+     *    1-32 : FatalErrInfo
+     * Outputs:
+     *       0 : Header code
+     *       1 : Result code
+     */
+    void ThrowFatalError(Kernel::HLERequestContext& ctx);
 };
 
-} // namespace ERR
-} // namespace Service
+void InstallInterfaces();
+
+} // namespace Service::ERR

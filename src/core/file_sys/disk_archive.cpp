@@ -16,24 +16,25 @@
 
 namespace FileSys {
 
-ResultVal<size_t> DiskFile::Read(const u64 offset, const size_t length, u8* buffer) const {
+ResultVal<std::size_t> DiskFile::Read(const u64 offset, const std::size_t length,
+                                      u8* buffer) const {
     if (!mode.read_flag)
         return ERROR_INVALID_OPEN_FLAGS;
 
     file->Seek(offset, SEEK_SET);
-    return MakeResult<size_t>(file->ReadBytes(buffer, length));
+    return MakeResult<std::size_t>(file->ReadBytes(buffer, length));
 }
 
-ResultVal<size_t> DiskFile::Write(const u64 offset, const size_t length, const bool flush,
-                                  const u8* buffer) {
+ResultVal<std::size_t> DiskFile::Write(const u64 offset, const std::size_t length, const bool flush,
+                                       const u8* buffer) {
     if (!mode.write_flag)
         return ERROR_INVALID_OPEN_FLAGS;
 
     file->Seek(offset, SEEK_SET);
-    size_t written = file->WriteBytes(buffer, length);
+    std::size_t written = file->WriteBytes(buffer, length);
     if (flush)
         file->Flush();
-    return MakeResult<size_t>(written);
+    return MakeResult<std::size_t>(written);
 }
 
 u64 DiskFile::GetSize() const {
@@ -52,7 +53,7 @@ bool DiskFile::Close() const {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-DiskDirectory::DiskDirectory(const std::string& path) : directory() {
+DiskDirectory::DiskDirectory(const std::string& path) {
     unsigned size = FileUtil::ScanDirectoryTree(path, directory);
     directory.size = size;
     directory.isDirectory = true;
@@ -67,11 +68,10 @@ u32 DiskDirectory::Read(const u32 count, Entry* entries) {
         const std::string& filename = file.virtualName;
         Entry& entry = entries[entries_read];
 
-        LOG_TRACE(Service_FS, "File %s: size=%llu dir=%d", filename.c_str(), file.size,
-                  file.isDirectory);
+        LOG_TRACE(Service_FS, "File {}: size={} dir={}", filename, file.size, file.isDirectory);
 
         // TODO(Link Mauve): use a proper conversion to UTF-16.
-        for (size_t j = 0; j < FILENAME_LENGTH; ++j) {
+        for (std::size_t j = 0; j < FILENAME_LENGTH; ++j) {
             entry.filename[j] = filename[j];
             if (!filename[j])
                 break;

@@ -2,13 +2,13 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#include "common/math_util.h"
+#include <algorithm>
 #include "video_core/swrasterizer/lighting.h"
 
 namespace Pica {
 
-static float LookupLightingLut(const Pica::State::Lighting& lighting, size_t lut_index, u8 index,
-                               float delta) {
+static float LookupLightingLut(const Pica::State::Lighting& lighting, std::size_t lut_index,
+                               u8 index, float delta) {
     ASSERT_MSG(lut_index < lighting.luts.size(), "Out of range lut");
     ASSERT_MSG(index < lighting.luts[lut_index].size(), "Out of range index");
 
@@ -24,6 +24,16 @@ std::tuple<Math::Vec4<u8>, Math::Vec4<u8>> ComputeFragmentsColors(
     const Pica::LightingRegs& lighting, const Pica::State::Lighting& lighting_state,
     const Math::Quaternion<float>& normquat, const Math::Vec3<float>& view,
     const Math::Vec4<u8> (&texture_color)[4]) {
+
+    Math::Vec4<float> shadow;
+    if (lighting.config0.enable_shadow) {
+        shadow = texture_color[lighting.config0.shadow_selector].Cast<float>() / 255.0f;
+        if (lighting.config0.shadow_invert) {
+            shadow = Math::MakeVec(1.0f, 1.0f, 1.0f, 1.0f) - shadow;
+        }
+    } else {
+        shadow = Math::MakeVec(1.0f, 1.0f, 1.0f, 1.0f);
+    }
 
     Math::Vec3<float> surface_normal;
     Math::Vec3<float> surface_tangent;
@@ -43,7 +53,7 @@ std::tuple<Math::Vec4<u8>, Math::Vec4<u8>> ComputeFragmentsColors(
             surface_normal = Math::MakeVec(0.0f, 0.0f, 1.0f);
             surface_tangent = perturbation;
         } else {
-            LOG_ERROR(HW_GPU, "Unknown bump mode %u",
+            LOG_ERROR(HW_GPU, "Unknown bump mode {}",
                       static_cast<u32>(lighting.config0.bump_mode.Value()));
         }
     } else {
@@ -83,13 +93,13 @@ std::tuple<Math::Vec4<u8>, Math::Vec4<u8>> ComputeFragmentsColors(
             auto distance = (-view - position).Length();
             float scale = Pica::float20::FromRaw(light_config.dist_atten_scale).ToFloat32();
             float bias = Pica::float20::FromRaw(light_config.dist_atten_bias).ToFloat32();
-            size_t lut =
-                static_cast<size_t>(LightingRegs::LightingSampler::DistanceAttenuation) + num;
+            std::size_t lut =
+                static_cast<std::size_t>(LightingRegs::LightingSampler::DistanceAttenuation) + num;
 
-            float sample_loc = MathUtil::Clamp(scale * distance + bias, 0.0f, 1.0f);
+            float sample_loc = std::clamp(scale * distance + bias, 0.0f, 1.0f);
 
             u8 lutindex =
-                static_cast<u8>(MathUtil::Clamp(std::floor(sample_loc * 256.0f), 0.0f, 255.0f));
+                static_cast<u8>(std::clamp(std::floor(sample_loc * 256.0f), 0.0f, 255.0f));
             float delta = sample_loc * 256 - lutindex;
             dist_atten = LookupLightingLut(lighting_state, lut, lutindex, delta);
         }
@@ -133,7 +143,7 @@ std::tuple<Math::Vec4<u8>, Math::Vec4<u8>> ComputeFragmentsColors(
                 }
                 break;
             default:
-                LOG_CRITICAL(HW_GPU, "Unknown lighting LUT input %u\n", static_cast<u32>(input));
+                LOG_CRITICAL(HW_GPU, "Unknown lighting LUT input {}", static_cast<u32>(input));
                 UNIMPLEMENTED();
                 result = 0.0f;
             }
@@ -148,18 +158,18 @@ std::tuple<Math::Vec4<u8>, Math::Vec4<u8>> ComputeFragmentsColors(
                     result = std::max(result, 0.0f);
 
                 float flr = std::floor(result * 256.0f);
-                index = static_cast<u8>(MathUtil::Clamp(flr, 0.0f, 255.0f));
+                index = static_cast<u8>(std::clamp(flr, 0.0f, 255.0f));
                 delta = result * 256 - index;
             } else {
                 float flr = std::floor(result * 128.0f);
-                s8 signed_index = static_cast<s8>(MathUtil::Clamp(flr, -128.0f, 127.0f));
+                s8 signed_index = static_cast<s8>(std::clamp(flr, -128.0f, 127.0f));
                 delta = result * 128.0f - signed_index;
                 index = static_cast<u8>(signed_index);
             }
 
             float scale = lighting.lut_scale.GetScale(scale_enum);
-            return scale *
-                   LookupLightingLut(lighting_state, static_cast<size_t>(sampler), index, delta);
+            return scale * LookupLightingLut(lighting_state, static_cast<std::size_t>(sampler),
+                                             index, delta);
         };
 
         // If enabled, compute spot light attenuation value
@@ -241,36 +251,26 @@ std::tuple<Math::Vec4<u8>, Math::Vec4<u8>> ComputeFragmentsColors(
                             lighting.lut_scale.fr, LightingRegs::LightingSampler::Fresnel);
 
             // Enabled for diffuse lighting alpha component
-            if (lighting.config0.fresnel_selector ==
-                    LightingRegs::LightingFresnelSelector::PrimaryAlpha ||
-                lighting.config0.fresnel_selector == LightingRegs::LightingFresnelSelector::Both) {
+            if (lighting.config0.enable_primary_alpha) {
                 diffuse_sum.a() = lut_value;
             }
 
             // Enabled for the specular lighting alpha component
-            if (lighting.config0.fresnel_selector ==
-                    LightingRegs::LightingFresnelSelector::SecondaryAlpha ||
-                lighting.config0.fresnel_selector == LightingRegs::LightingFresnelSelector::Both) {
+            if (lighting.config0.enable_secondary_alpha) {
                 specular_sum.a() = lut_value;
             }
         }
 
         auto dot_product = Math::Dot(light_vector, normal);
-
-        // Calculate clamp highlights before applying the two-sided diffuse configuration to the dot
-        // product.
-        float clamp_highlights = 1.0f;
-        if (lighting.config0.clamp_highlights) {
-            if (dot_product <= 0.0f)
-                clamp_highlights = 0.0f;
-            else
-                clamp_highlights = 1.0f;
-        }
-
         if (light_config.config.two_sided_diffuse)
             dot_product = std::abs(dot_product);
         else
             dot_product = std::max(dot_product, 0.0f);
+
+        float clamp_highlights = 1.0f;
+        if (lighting.config0.clamp_highlights) {
+            clamp_highlights = dot_product == 0.0f ? 0.0f : 1.0f;
+        }
 
         if (light_config.config.geometric_factor_0 || light_config.config.geometric_factor_1) {
             float geo_factor = half_vector.Length2();
@@ -284,24 +284,47 @@ std::tuple<Math::Vec4<u8>, Math::Vec4<u8>> ComputeFragmentsColors(
         }
 
         auto diffuse =
-            light_config.diffuse.ToVec3f() * dot_product + light_config.ambient.ToVec3f();
-        diffuse_sum += Math::MakeVec(diffuse * dist_atten * spot_atten, 0.0f);
+            (light_config.diffuse.ToVec3f() * dot_product + light_config.ambient.ToVec3f()) *
+            dist_atten * spot_atten;
+        auto specular = (specular_0 + specular_1) * clamp_highlights * dist_atten * spot_atten;
 
-        specular_sum += Math::MakeVec(
-            (specular_0 + specular_1) * clamp_highlights * dist_atten * spot_atten, 0.0f);
+        if (!lighting.IsShadowDisabled(num)) {
+            if (lighting.config0.shadow_primary) {
+                diffuse = diffuse * shadow.xyz();
+            }
+            if (lighting.config0.shadow_secondary) {
+                specular = specular * shadow.xyz();
+            }
+        }
+
+        diffuse_sum += Math::MakeVec(diffuse, 0.0f);
+        specular_sum += Math::MakeVec(specular, 0.0f);
+    }
+
+    if (lighting.config0.shadow_alpha) {
+        // Alpha shadow also uses the Fresnel selecotr to determine which alpha to apply
+        // Enabled for diffuse lighting alpha component
+        if (lighting.config0.enable_primary_alpha) {
+            diffuse_sum.a() *= shadow.w;
+        }
+
+        // Enabled for the specular lighting alpha component
+        if (lighting.config0.enable_secondary_alpha) {
+            specular_sum.a() *= shadow.w;
+        }
     }
 
     diffuse_sum += Math::MakeVec(lighting.global_ambient.ToVec3f(), 0.0f);
 
-    auto diffuse = Math::MakeVec<float>(MathUtil::Clamp(diffuse_sum.x, 0.0f, 1.0f) * 255,
-                                        MathUtil::Clamp(diffuse_sum.y, 0.0f, 1.0f) * 255,
-                                        MathUtil::Clamp(diffuse_sum.z, 0.0f, 1.0f) * 255,
-                                        MathUtil::Clamp(diffuse_sum.w, 0.0f, 1.0f) * 255)
+    auto diffuse = Math::MakeVec<float>(std::clamp(diffuse_sum.x, 0.0f, 1.0f) * 255,
+                                        std::clamp(diffuse_sum.y, 0.0f, 1.0f) * 255,
+                                        std::clamp(diffuse_sum.z, 0.0f, 1.0f) * 255,
+                                        std::clamp(diffuse_sum.w, 0.0f, 1.0f) * 255)
                        .Cast<u8>();
-    auto specular = Math::MakeVec<float>(MathUtil::Clamp(specular_sum.x, 0.0f, 1.0f) * 255,
-                                         MathUtil::Clamp(specular_sum.y, 0.0f, 1.0f) * 255,
-                                         MathUtil::Clamp(specular_sum.z, 0.0f, 1.0f) * 255,
-                                         MathUtil::Clamp(specular_sum.w, 0.0f, 1.0f) * 255)
+    auto specular = Math::MakeVec<float>(std::clamp(specular_sum.x, 0.0f, 1.0f) * 255,
+                                         std::clamp(specular_sum.y, 0.0f, 1.0f) * 255,
+                                         std::clamp(specular_sum.z, 0.0f, 1.0f) * 255,
+                                         std::clamp(specular_sum.w, 0.0f, 1.0f) * 255)
                         .Cast<u8>();
     return std::make_tuple(diffuse, specular);
 }

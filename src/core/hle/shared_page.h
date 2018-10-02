@@ -10,6 +10,9 @@
  * write access, according to 3dbrew; this is not emulated)
  */
 
+#include <chrono>
+#include <ctime>
+#include <memory>
 #include "common/bit_field.h"
 #include "common/common_funcs.h"
 #include "common/common_types.h"
@@ -17,6 +20,10 @@
 #include "core/memory.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace CoreTiming {
+struct EventType;
+}
 
 namespace SharedPage {
 
@@ -35,6 +42,18 @@ union BatteryState {
     BitField<0, 1, u8> is_adapter_connected;
     BitField<1, 1, u8> is_charging;
     BitField<2, 3, u8> charge_level;
+};
+
+using MacAddress = std::array<u8, 6>;
+
+// Default MAC address in the Nintendo 3DS range
+constexpr MacAddress DefaultMac = {0x40, 0xF4, 0x07, 0x00, 0x00, 0x00};
+
+enum class WifiLinkLevel : u8 {
+    OFF = 0,
+    POOR = 1,
+    GOOD = 2,
+    BEST = 3,
 };
 
 struct SharedPageDef {
@@ -62,8 +81,25 @@ struct SharedPageDef {
 static_assert(sizeof(SharedPageDef) == Memory::SHARED_PAGE_SIZE,
               "Shared page structure size is wrong");
 
-extern SharedPageDef shared_page;
+class Handler {
+public:
+    Handler();
 
-void Init();
+    void SetMacAddress(const MacAddress&);
 
-} // namespace
+    void SetWifiLinkLevel(WifiLinkLevel);
+
+    void Set3DLed(u8);
+
+    SharedPageDef& GetSharedPage();
+
+private:
+    u64 GetSystemTime() const;
+    void UpdateTimeCallback(u64 userdata, int cycles_late);
+    CoreTiming::EventType* update_time_event;
+    std::chrono::seconds init_time;
+
+    SharedPageDef shared_page;
+};
+
+} // namespace SharedPage

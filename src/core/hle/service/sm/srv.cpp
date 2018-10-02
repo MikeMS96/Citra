@@ -3,7 +3,6 @@
 // Refer to the license.txt file included.
 
 #include <tuple>
-
 #include "common/common_types.h"
 #include "common/logging/log.h"
 #include "core/hle/ipc.h"
@@ -11,15 +10,16 @@
 #include "core/hle/kernel/client_port.h"
 #include "core/hle/kernel/client_session.h"
 #include "core/hle/kernel/errors.h"
+#include "core/hle/kernel/event.h"
 #include "core/hle/kernel/hle_ipc.h"
 #include "core/hle/kernel/semaphore.h"
 #include "core/hle/kernel/server_port.h"
 #include "core/hle/kernel/server_session.h"
+#include "core/hle/lock.h"
 #include "core/hle/service/sm/sm.h"
 #include "core/hle/service/sm/srv.h"
 
-namespace Service {
-namespace SM {
+namespace Service::SM {
 
 constexpr int MAX_PENDING_NOTIFICATIONS = 16;
 
@@ -66,7 +66,7 @@ void SRV::EnableNotification(Kernel::HLERequestContext& ctx) {
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
-    rb.PushObjects(notification_semaphore);
+    rb.PushCopyObjects(notification_semaphore);
     LOG_WARNING(Service_SRV, "(STUBBED) called");
 }
 
@@ -84,46 +84,74 @@ void SRV::EnableNotification(Kernel::HLERequestContext& ctx) {
 void SRV::GetServiceHandle(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx, 0x5, 4, 0);
     auto name_buf = rp.PopRaw<std::array<char, 8>>();
-    size_t name_len = rp.Pop<u32>();
+    std::size_t name_len = rp.Pop<u32>();
     u32 flags = rp.Pop<u32>();
 
-    bool return_port_on_failure = (flags & 1) == 0;
+    bool wait_until_available = (flags & 1) == 0;
 
     if (name_len > Service::kMaxPortSize) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(ERR_INVALID_NAME_SIZE);
-        LOG_ERROR(Service_SRV, "called name_len=0x%zX -> ERR_INVALID_NAME_SIZE", name_len);
+        LOG_ERROR(Service_SRV, "called name_len=0x{:X} -> ERR_INVALID_NAME_SIZE", name_len);
         return;
     }
     std::string name(name_buf.data(), name_len);
 
     // TODO(yuriks): Permission checks go here
 
+    auto get_handle = [name, this](Kernel::SharedPtr<Kernel::Thread> thread,
+                                   Kernel::HLERequestContext& ctx,
+                                   Kernel::ThreadWakeupReason reason) {
+        LOG_ERROR(Service_SRV, "called service={} wakeup", name);
+        auto client_port = service_manager->GetServicePort(name);
+
+        auto session = client_port.Unwrap()->Connect();
+        if (session.Succeeded()) {
+            LOG_DEBUG(Service_SRV, "called service={} -> session={}", name,
+                      (*session)->GetObjectId());
+            IPC::RequestBuilder rb(ctx, 0x5, 1, 2);
+            rb.Push(session.Code());
+            rb.PushMoveObjects(std::move(session).Unwrap());
+        } else if (session.Code() == Kernel::ERR_MAX_CONNECTIONS_REACHED) {
+            LOG_ERROR(Service_SRV, "called service={} -> ERR_MAX_CONNECTIONS_REACHED", name);
+            UNREACHABLE();
+        } else {
+            LOG_ERROR(Service_SRV, "called service={} -> error 0x{:08X}", name, session.Code().raw);
+            IPC::RequestBuilder rb(ctx, 0x5, 1, 0);
+            rb.Push(session.Code());
+        }
+    };
+
     auto client_port = service_manager->GetServicePort(name);
     if (client_port.Failed()) {
-        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
-        rb.Push(client_port.Code());
-        LOG_ERROR(Service_SRV, "called service=%s -> error 0x%08X", name.c_str(),
-                  client_port.Code().raw);
-        return;
+        if (wait_until_available && client_port.Code() == ERR_SERVICE_NOT_REGISTERED) {
+            LOG_INFO(Service_SRV, "called service={} delayed", name);
+            Kernel::SharedPtr<Kernel::Event> get_service_handle_event =
+                ctx.SleepClientThread(Kernel::GetCurrentThread(), "GetServiceHandle",
+                                      std::chrono::nanoseconds(-1), get_handle);
+            get_service_handle_delayed_map[name] = std::move(get_service_handle_event);
+            return;
+        } else {
+            IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+            rb.Push(client_port.Code());
+            LOG_ERROR(Service_SRV, "called service={} -> error 0x{:08X}", name,
+                      client_port.Code().raw);
+            return;
+        }
     }
 
     auto session = client_port.Unwrap()->Connect();
     if (session.Succeeded()) {
-        LOG_DEBUG(Service_SRV, "called service=%s -> session=%u", name.c_str(),
-                  (*session)->GetObjectId());
+        LOG_DEBUG(Service_SRV, "called service={} -> session={}", name, (*session)->GetObjectId());
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
         rb.Push(session.Code());
-        rb.PushObjects(std::move(session).Unwrap());
-    } else if (session.Code() == Kernel::ERR_MAX_CONNECTIONS_REACHED && return_port_on_failure) {
-        LOG_WARNING(Service_SRV, "called service=%s -> ERR_MAX_CONNECTIONS_REACHED, *port*=%u",
-                    name.c_str(), (*client_port)->GetObjectId());
-        IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
-        rb.Push(ERR_MAX_CONNECTIONS_REACHED);
-        rb.PushObjects(std::move(client_port).Unwrap());
+        rb.PushMoveObjects(std::move(session).Unwrap());
+    } else if (session.Code() == Kernel::ERR_MAX_CONNECTIONS_REACHED && wait_until_available) {
+        LOG_WARNING(Service_SRV, "called service={} -> ERR_MAX_CONNECTIONS_REACHED", name);
+        // TODO(Subv): Put the caller guest thread to sleep until this port becomes available again.
+        UNIMPLEMENTED_MSG("Unimplemented wait until port {} is available.", name);
     } else {
-        LOG_ERROR(Service_SRV, "called service=%s -> error 0x%08X", name.c_str(),
-                  session.Code().raw);
+        LOG_ERROR(Service_SRV, "called service={} -> error 0x{:08X}", name, session.Code().raw);
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(session.Code());
     }
@@ -144,7 +172,7 @@ void SRV::Subscribe(Kernel::HLERequestContext& ctx) {
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
-    LOG_WARNING(Service_SRV, "(STUBBED) called, notification_id=0x%X", notification_id);
+    LOG_WARNING(Service_SRV, "(STUBBED) called, notification_id=0x{:X}", notification_id);
 }
 
 /**
@@ -162,7 +190,7 @@ void SRV::Unsubscribe(Kernel::HLERequestContext& ctx) {
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
-    LOG_WARNING(Service_SRV, "(STUBBED) called, notification_id=0x%X", notification_id);
+    LOG_WARNING(Service_SRV, "(STUBBED) called, notification_id=0x{:X}", notification_id);
 }
 
 /**
@@ -182,7 +210,7 @@ void SRV::PublishToSubscriber(Kernel::HLERequestContext& ctx) {
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
-    LOG_WARNING(Service_SRV, "(STUBBED) called, notification_id=0x%X, flags=%u", notification_id,
+    LOG_WARNING(Service_SRV, "(STUBBED) called, notification_id=0x{:X}, flags={}", notification_id,
                 flags);
 }
 
@@ -190,7 +218,7 @@ void SRV::RegisterService(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx, 0x3, 4, 0);
 
     auto name_buf = rp.PopRaw<std::array<char, 8>>();
-    size_t name_len = rp.Pop<u32>();
+    std::size_t name_len = rp.Pop<u32>();
     u32 max_sessions = rp.Pop<u32>();
 
     std::string name(name_buf.data(), std::min(name_len, name_buf.size()));
@@ -200,13 +228,19 @@ void SRV::RegisterService(Kernel::HLERequestContext& ctx) {
     if (port.Failed()) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(port.Code());
-        LOG_ERROR(Service_SRV, "called service=%s -> error 0x%08X", name.c_str(), port.Code().raw);
+        LOG_ERROR(Service_SRV, "called service={} -> error 0x{:08X}", name, port.Code().raw);
         return;
+    }
+
+    auto it = get_service_handle_delayed_map.find(name);
+    if (it != get_service_handle_delayed_map.end()) {
+        it->second->Signal();
+        get_service_handle_delayed_map.erase(it);
     }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
-    rb.PushObjects(port.Unwrap());
+    rb.PushMoveObjects(port.Unwrap());
 }
 
 SRV::SRV(std::shared_ptr<ServiceManager> service_manager)
@@ -232,5 +266,4 @@ SRV::SRV(std::shared_ptr<ServiceManager> service_manager)
 
 SRV::~SRV() = default;
 
-} // namespace SM
-} // namespace Service
+} // namespace Service::SM

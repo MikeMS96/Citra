@@ -4,17 +4,14 @@
 
 #include "core/hle/service/nwm/nwm_soc.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
-/*
-const Interface::FunctionInfo FunctionTable[] = {
-};
-*/
-
-NWM_SOC::NWM_SOC() {
-    // Register(FunctionTable);
+NWM_SOC::NWM_SOC() : ServiceFramework("nwm::SOC") {
+    /*
+    static const FunctionInfo functions[] = {
+    };
+    RegisterHandlers(functions);
+    */
 }
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

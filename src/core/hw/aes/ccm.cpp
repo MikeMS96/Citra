@@ -19,10 +19,10 @@ namespace {
 
 // 3DS uses a non-standard AES-CCM algorithm, so we need to derive a sub class from the standard one
 // and override with the non-standard part.
-using CryptoPP::lword;
 using CryptoPP::AES;
-using CryptoPP::CCM_Final;
 using CryptoPP::CCM_Base;
+using CryptoPP::CCM_Final;
+using CryptoPP::lword;
 template <bool T_IsEncryption>
 class CCM_3DSVariant_Final : public CCM_Final<AES, CCM_MAC_SIZE, T_IsEncryption> {
 public:
@@ -44,9 +44,9 @@ public:
 } // namespace
 
 std::vector<u8> EncryptSignCCM(const std::vector<u8>& pdata, const CCMNonce& nonce,
-                               size_t slot_id) {
+                               std::size_t slot_id) {
     if (!IsNormalKeyAvailable(slot_id)) {
-        LOG_ERROR(HW_AES, "Key slot %zu not available. Will use zero key.", slot_id);
+        LOG_ERROR(HW_AES, "Key slot {} not available. Will use zero key.", slot_id);
     }
     const AESKey normal = GetNormalKey(slot_id);
     std::vector<u8> cipher(pdata.size() + CCM_MAC_SIZE);
@@ -59,15 +59,15 @@ std::vector<u8> EncryptSignCCM(const std::vector<u8>& pdata, const CCMNonce& non
                                  new CryptoPP::AuthenticatedEncryptionFilter(
                                      e, new CryptoPP::ArraySink(cipher.data(), cipher.size())));
     } catch (const CryptoPP::Exception& e) {
-        LOG_ERROR(HW_AES, "FAILED with: %s", e.what());
+        LOG_ERROR(HW_AES, "FAILED with: {}", e.what());
     }
     return cipher;
 }
 
 std::vector<u8> DecryptVerifyCCM(const std::vector<u8>& cipher, const CCMNonce& nonce,
-                                 size_t slot_id) {
+                                 std::size_t slot_id) {
     if (!IsNormalKeyAvailable(slot_id)) {
-        LOG_ERROR(HW_AES, "Key slot %zu not available. Will use zero key.", slot_id);
+        LOG_ERROR(HW_AES, "Key slot {} not available. Will use zero key.", slot_id);
     }
     const AESKey normal = GetNormalKey(slot_id);
     const std::size_t pdata_size = cipher.size() - CCM_MAC_SIZE;
@@ -85,7 +85,7 @@ std::vector<u8> DecryptVerifyCCM(const std::vector<u8>& cipher, const CCMNonce& 
             return {};
         }
     } catch (const CryptoPP::Exception& e) {
-        LOG_ERROR(HW_AES, "FAILED with: %s", e.what());
+        LOG_ERROR(HW_AES, "FAILED with: {}", e.what());
         return {};
     }
     return pdata;

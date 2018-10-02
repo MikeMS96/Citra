@@ -11,6 +11,7 @@ src/common/scm_rev.cpp
 .idea/
 .vs/
 .vscode/
+CMakeLists.txt.user*
 
 # *nix related
 # Common convention for backup or temporary files
@@ -30,3 +31,5 @@ CMakeSettings.json
 # Windows global filetypes
 Thumbs.db
 
+# Python files
+*.pyc

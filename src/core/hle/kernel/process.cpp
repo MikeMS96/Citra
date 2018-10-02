@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <algorithm>
 #include <memory>
 #include "common/assert.h"
 #include "common/common_funcs.h"
@@ -15,6 +16,9 @@
 #include "core/memory.h"
 
 namespace Kernel {
+
+// Lists all processes that exist in the current session.
+static std::vector<SharedPtr<Process>> process_list;
 
 SharedPtr<CodeSet> CodeSet::Create(std::string name, u64 program_id) {
     SharedPtr<CodeSet> codeset(new CodeSet);
@@ -36,12 +40,14 @@ SharedPtr<Process> Process::Create(SharedPtr<CodeSet> code_set) {
     process->codeset = std::move(code_set);
     process->flags.raw = 0;
     process->flags.memory_region.Assign(MemoryRegion::APPLICATION);
+    process->status = ProcessStatus::Created;
 
+    process_list.push_back(process);
     return process;
 }
 
-void Process::ParseKernelCaps(const u32* kernel_caps, size_t len) {
-    for (size_t i = 0; i < len; ++i) {
+void Process::ParseKernelCaps(const u32* kernel_caps, std::size_t len) {
+    for (std::size_t i = 0; i < len; ++i) {
         u32 descriptor = kernel_caps[i];
         u32 type = descriptor >> 20;
 
@@ -105,9 +111,9 @@ void Process::ParseKernelCaps(const u32* kernel_caps, size_t len) {
 
             int minor = kernel_version & 0xFF;
             int major = (kernel_version >> 8) & 0xFF;
-            LOG_INFO(Loader, "ExHeader kernel version: %d.%d", major, minor);
+            LOG_INFO(Loader, "ExHeader kernel version: {}.{}", major, minor);
         } else {
-            LOG_ERROR(Loader, "Unhandled kernel caps descriptor: 0x%08X", descriptor);
+            LOG_ERROR(Loader, "Unhandled kernel caps descriptor: 0x{:08X}", descriptor);
         }
     }
 }
@@ -127,9 +133,9 @@ void Process::Run(s32 main_thread_priority, u32 stack_size) {
     };
 
     // Map CodeSet segments
-    MapSegment(codeset->code, VMAPermission::ReadExecute, MemoryState::Code);
-    MapSegment(codeset->rodata, VMAPermission::Read, MemoryState::Code);
-    MapSegment(codeset->data, VMAPermission::ReadWrite, MemoryState::Private);
+    MapSegment(codeset->CodeSegment(), VMAPermission::ReadExecute, MemoryState::Code);
+    MapSegment(codeset->RODataSegment(), VMAPermission::Read, MemoryState::Code);
+    MapSegment(codeset->DataSegment(), VMAPermission::ReadWrite, MemoryState::Private);
 
     // Allocate and map stack
     vm_manager
@@ -145,6 +151,8 @@ void Process::Run(s32 main_thread_priority, u32 stack_size) {
     for (const auto& mapping : address_mappings) {
         HandleSpecialMapping(vm_manager, mapping);
     }
+
+    status = ProcessStatus::Running;
 
     vm_manager.LogLayout(Log::Level::Debug);
     Kernel::SetupMainThread(codeset->entrypoint, main_thread_priority, this);
@@ -245,7 +253,7 @@ ResultVal<VAddr> Process::LinearAllocate(VAddr target, u32 size, VMAPermission p
 
     // TODO(yuriks): As is, this lets processes map memory allocated by other processes from the
     // same region. It is unknown if or how the 3DS kernel checks against this.
-    size_t offset = target - GetLinearHeapBase();
+    std::size_t offset = target - GetLinearHeapBase();
     CASCADE_RESULT(auto vma, vm_manager.MapMemoryBlock(target, linheap_memory, offset, size,
                                                        MemoryState::Continuous));
     vm_manager.Reprotect(vma, perms);
@@ -299,5 +307,20 @@ ResultCode Process::LinearFree(VAddr target, u32 size) {
 Kernel::Process::Process() {}
 Kernel::Process::~Process() {}
 
-SharedPtr<Process> g_current_process;
+void ClearProcessList() {
+    process_list.clear();
 }
+
+SharedPtr<Process> GetProcessById(u32 process_id) {
+    auto itr = std::find_if(
+        process_list.begin(), process_list.end(),
+        [&](const SharedPtr<Process>& process) { return process->process_id == process_id; });
+
+    if (itr == process_list.end())
+        return nullptr;
+
+    return *itr;
+}
+
+SharedPtr<Process> g_current_process;
+} // namespace Kernel

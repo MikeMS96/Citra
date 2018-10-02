@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include "common/common_types.h"
 #include "core/arm/skyeye_common/arm_regformat.h"
+#include "core/gdbstub/gdbstub.h"
 
 // Signal levels
 enum { LOW = 0, HIGH = 1, LOWHIGH = 1, HIGHLOW = 2 };
@@ -178,12 +179,23 @@ public:
     bool InAPrivilegedMode() const {
         return (Mode != USER32MODE);
     }
+    // Whether or not the current CPU mode has a Saved Program Status Register
+    bool CurrentModeHasSPSR() const {
+        return Mode != SYSTEM32MODE && InAPrivilegedMode();
+    }
     // Note that for the 3DS, a Thumb instruction will only ever be
     // two bytes in size. Thus we don't need to worry about ThumbEE
     // or Thumb-2 where instructions can be 4 bytes in length.
     u32 GetInstructionSize() const {
         return TFlag ? 2 : 4;
     }
+
+    void RecordBreak(GDBStub::BreakpointAddress bkpt) {
+        last_bkpt = bkpt;
+        last_bkpt_hit = true;
+    }
+
+    void ServeBreak();
 
     std::array<u32, 16> Reg{}; // The current register file
     std::array<u32, 2> Reg_usr{};
@@ -217,7 +229,7 @@ public:
     u32 TFlag; // Thumb state
 
     unsigned long long NumInstrs; // The number of instructions executed
-    unsigned NumInstrsToExecute;
+    u64 NumInstrsToExecute;
 
     unsigned NresetSig; // Reset the processor
     unsigned NfiqSig;
@@ -242,4 +254,7 @@ private:
 
     u32 exclusive_tag; // The address for which the local monitor is in exclusive access mode
     bool exclusive_state;
+
+    GDBStub::BreakpointAddress last_bkpt{};
+    bool last_bkpt_hit;
 };

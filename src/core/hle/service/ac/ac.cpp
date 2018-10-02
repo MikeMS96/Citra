@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <vector>
 #include "common/common_types.h"
 #include "common/logging/log.h"
 #include "core/hle/ipc.h"
@@ -14,22 +15,16 @@
 #include "core/hle/service/ac/ac_u.h"
 #include "core/memory.h"
 
-namespace Service {
-namespace AC {
+namespace Service::AC {
 void Module::Interface::CreateDefaultConfig(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx, 0x1, 0, 0);
 
-    std::size_t desc_size;
-    VAddr ac_config_addr = rp.PeekStaticBuffer(0, &desc_size);
-
-    ASSERT_MSG(desc_size >= sizeof(Module::ACConfig),
-               "Output buffer size can't fit ACConfig structure");
-
-    Memory::WriteBlock(ac_config_addr, &ac->default_config, sizeof(ACConfig));
+    std::vector<u8> buffer(sizeof(ACConfig));
+    std::memcpy(buffer.data(), &ac->default_config, buffer.size());
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
-    rb.PushStaticBuffer(ac_config_addr, sizeof(ACConfig), 0);
+    rb.PushStaticBuffer(std::move(buffer), 0);
 
     LOG_WARNING(Service_AC, "(STUBBED) called");
 }
@@ -41,7 +36,7 @@ void Module::Interface::ConnectAsync(Kernel::HLERequestContext& ctx) {
     ac->connect_event = rp.PopObject<Kernel::Event>();
 
     if (ac->connect_event) {
-        ac->connect_event->name = "AC:connect_event";
+        ac->connect_event->SetName("AC:connect_event");
         ac->connect_event->Signal();
         ac->ac_connected = true;
     }
@@ -71,7 +66,7 @@ void Module::Interface::CloseAsync(Kernel::HLERequestContext& ctx) {
     }
 
     if (ac->close_event) {
-        ac->close_event->name = "AC:close_event";
+        ac->close_event->SetName("AC:close_event");
         ac->close_event->Signal();
     }
 
@@ -106,7 +101,7 @@ void Module::Interface::GetWifiStatus(Kernel::HLERequestContext& ctx) {
 
 void Module::Interface::GetInfraPriority(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx, 0x27, 0, 2);
-    VAddr ac_config = rp.PopStaticBuffer();
+    const std::vector<u8>& ac_config = rp.PopStaticBuffer();
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
     rb.Push(RESULT_SUCCESS);
@@ -121,15 +116,15 @@ void Module::Interface::SetRequestEulaVersion(Kernel::HLERequestContext& ctx) {
     u32 major = rp.Pop<u8>();
     u32 minor = rp.Pop<u8>();
 
-    VAddr ac_config = rp.PopStaticBuffer();
+    const std::vector<u8>& ac_config = rp.PopStaticBuffer();
 
     // TODO(Subv): Copy over the input ACConfig to the stored ACConfig.
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
-    rb.PushStaticBuffer(ac_config, sizeof(ACConfig), 0);
+    rb.PushStaticBuffer(std::move(ac_config), 0);
 
-    LOG_WARNING(Service_AC, "(STUBBED) called, major=%u, minor=%u", major, minor);
+    LOG_WARNING(Service_AC, "(STUBBED) called, major={}, minor={}", major, minor);
 }
 
 void Module::Interface::RegisterDisconnectEvent(Kernel::HLERequestContext& ctx) {
@@ -138,7 +133,7 @@ void Module::Interface::RegisterDisconnectEvent(Kernel::HLERequestContext& ctx) 
 
     ac->disconnect_event = rp.PopObject<Kernel::Event>();
     if (ac->disconnect_event) {
-        ac->disconnect_event->name = "AC:disconnect_event";
+        ac->disconnect_event->SetName("AC:disconnect_event");
     }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -157,7 +152,7 @@ void Module::Interface::IsConnected(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.Push(ac->ac_connected);
 
-    LOG_WARNING(Service_AC, "(STUBBED) called unk=%08X descriptor=%08X param=%08X", unk,
+    LOG_WARNING(Service_AC, "(STUBBED) called unk=0x{:08X} descriptor=0x{:08X} param=0x{:08X}", unk,
                 unk_descriptor, unk_param);
 }
 
@@ -167,14 +162,14 @@ void Module::Interface::SetClientVersion(Kernel::HLERequestContext& ctx) {
     u32 version = rp.Pop<u32>();
     rp.Skip(2, false); // ProcessId descriptor
 
-    LOG_WARNING(Service_AC, "(STUBBED) called, version: 0x%08X", version);
+    LOG_WARNING(Service_AC, "(STUBBED) called, version: 0x{:08X}", version);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
 }
 
 Module::Interface::Interface(std::shared_ptr<Module> ac, const char* name, u32 max_session)
-    : ac(std::move(ac)), ServiceFramework(name, max_session) {}
+    : ServiceFramework(name, max_session), ac(std::move(ac)) {}
 
 void InstallInterfaces(SM::ServiceManager& service_manager) {
     auto ac = std::make_shared<Module>();
@@ -182,5 +177,4 @@ void InstallInterfaces(SM::ServiceManager& service_manager) {
     std::make_shared<AC_U>(ac)->InstallAsService(service_manager);
 }
 
-} // namespace AC
-} // namespace Service
+} // namespace Service::AC

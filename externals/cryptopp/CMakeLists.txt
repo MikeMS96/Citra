@@ -116,20 +116,62 @@ endif()
 # Library headers
 file(GLOB cryptopp_HEADERS cryptopp/*.h)
 
-# Library sources. You can use the GNUmakefile to generate the list: `make sources`.
-file(GLOB cryptopp_SOURCES cryptopp/*.cpp)
-list(REMOVE_ITEM cryptopp_SOURCES
-        # These are removed in the original CMakeLists.txt
-        ${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/pch.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/simple.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/winpipes.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/cryptlib_bds.cpp
-        ${cryptopp_SOURCES_TEST}
+# Library sources.
+# These have been trimmed to include only things Citra uses. This speeds up
+# compiles and reduces the amount of compilation breakage.
+set(cryptopp_SOURCES
+        # The Crypto++ readme says you should put these 3 object files first,
+        # to avoid "problems associated with C++ static initialization order",
+        # but doesn't actually tell what could go wrong. Better safe than sorry
+        # I guess...
+        cryptopp/cryptlib.cpp
+        cryptopp/cpu.cpp
+        cryptopp/integer.cpp
+
+        cryptopp/algparam.cpp
+        cryptopp/asn.cpp
+        cryptopp/authenc.cpp
+        cryptopp/base64.cpp
+        cryptopp/basecode.cpp
+        cryptopp/ccm.cpp
+        cryptopp/crc-simd.cpp
+        cryptopp/des.cpp
+        cryptopp/dessp.cpp
+        cryptopp/dll.cpp
+        cryptopp/ec2n.cpp
+        cryptopp/ecp.cpp
+        cryptopp/filters.cpp
+        cryptopp/fips140.cpp
+        cryptopp/gcm-simd.cpp
+        cryptopp/gf2n.cpp
+        cryptopp/gfpcrypt.cpp
+        cryptopp/hex.cpp
+        cryptopp/hmac.cpp
+        cryptopp/hrtimer.cpp
+        cryptopp/iterhash.cpp
+        cryptopp/md5.cpp
+        cryptopp/misc.cpp
+        cryptopp/modes.cpp
+        cryptopp/mqueue.cpp
+        cryptopp/nbtheory.cpp
+        cryptopp/neon-simd.cpp
+        cryptopp/oaep.cpp
+        cryptopp/osrng.cpp
+        cryptopp/pubkey.cpp
+        cryptopp/queue.cpp
+        cryptopp/randpool.cpp
+        cryptopp/rdtables.cpp
+        cryptopp/rijndael-simd.cpp
+        cryptopp/rijndael.cpp
+        cryptopp/rng.cpp
+        cryptopp/sha-simd.cpp
+        cryptopp/sha.cpp
+        cryptopp/sse-simd.cpp
         )
 
-if(MINGW OR WIN32)
+if (MINGW OR WIN32)
     list(APPEND cryptopp_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/winpipes.cpp)
-endif()
+endif ()
 
 if(MSVC AND NOT CRYPTOPP_DISABLE_ASM)
     if(${CMAKE_GENERATOR} MATCHES ".*ARM")
@@ -150,6 +192,44 @@ if(MSVC AND NOT CRYPTOPP_DISABLE_ASM)
     endif()
 endif()
 
+if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND NOT CRYPTOPP_DISABLE_ASM)
+    check_cxx_compiler_flag(-msse2 CRYPTOPP_HAS_MSSE2)
+    check_cxx_compiler_flag(-mssse3 CRYPTOPP_HAS_MSSSE3)
+    check_cxx_compiler_flag(-msse4.1 CRYPTOPP_HAS_MSSE41)
+    check_cxx_compiler_flag(-msse4.2 CRYPTOPP_HAS_MSSE42)
+    check_cxx_compiler_flag(-maes CRYPTOPP_HAS_MAES)
+    check_cxx_compiler_flag(-mpclmul CRYPTOPP_HAS_PCLMUL)
+    check_cxx_compiler_flag(-msha CRYPTOPP_HAS_MSHA)
+    check_cxx_compiler_flag(-march=armv8-a+crc CRYPTOPP_HAS_ARMV8_CRC32)
+    check_cxx_compiler_flag(-march=armv8-a+crypto CRYPTOPP_HAS_ARMV8_CRYPTO)
+    if (CRYPTOPP_HAS_MSSE2)
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/sse-simd.cpp PROPERTIES COMPILE_FLAGS "-msse2")
+    endif()
+    if (CRYPTOPP_HAS_MSSSE3 AND CRYPTOPP_HAS_MAES AND CRYPTOPP_HAS_PCLMUL)
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/gcm-simd.cpp
+                                    PROPERTIES COMPILE_FLAGS "-mssse3 -maes -mpclmul")
+    endif()
+    if (CRYPTOPP_HAS_MSSE41 AND CRYPTOPP_HAS_MAES)
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/rijndael-simd.cpp PROPERTIES COMPILE_FLAGS "-msse4.1 -maes")
+    endif()
+    if (CRYPTOPP_HAS_MSSE42)
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/crc-simd.cpp
+                                    PROPERTIES COMPILE_FLAGS "-msse4.2")
+    endif()
+    if (CRYPTOPP_HAS_MSSE42 AND CRYPTOPP_HAS_MSHA)
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/sha-simd.cpp PROPERTIES COMPILE_FLAGS "-msse4.2 -msha")
+    endif()
+    if (CRYPTOPP_HAS_ARMV8_CRC32)
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/crc-simd.cpp
+                                    PROPERTIES COMPILE_FLAGS "-march=armv8-a+crc")
+    endif()
+    if (CRYPTOPP_HAS_ARMV8_CRYPTO)
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/rijndael-simd.cpp
+                                    ${CMAKE_CURRENT_SOURCE_DIR}/cryptopp/sha-simd.cpp
+                                    PROPERTIES COMPILE_FLAGS "-march=armv8-a+crypto")
+    endif()
+endif()
+
 #============================================================================
 # Compile targets
 #============================================================================
@@ -159,10 +239,6 @@ target_include_directories(cryptopp INTERFACE .)
 #============================================================================
 # Third-party libraries
 #============================================================================
-
-if(WIN32)
-    target_link_libraries(cryptopp PRIVATE ws2_32)
-endif()
 
 find_package(Threads)
 target_link_libraries(cryptopp PRIVATE ${CMAKE_THREAD_LIBS_INIT})

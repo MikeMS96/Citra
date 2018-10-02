@@ -7,14 +7,14 @@
 #include "common/logging/log.h"
 #include "core/core_timing.h"
 #include "core/hle/kernel/handle_table.h"
-#include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/object.h"
 #include "core/hle/kernel/thread.h"
 #include "core/hle/kernel/timer.h"
 
 namespace Kernel {
 
 /// The event type of the generic timer callback event
-static int timer_callback_event_type;
+static CoreTiming::EventType* timer_callback_event_type = nullptr;
 // TODO(yuriks): This can be removed if Timer objects are explicitly pooled in the future, allowing
 //               us to simply use a pool index or similar.
 static Kernel::HandleTable timer_callback_handle_table;
@@ -57,9 +57,7 @@ void Timer::Set(s64 initial, s64 interval) {
         // Immediately invoke the callback
         Signal(0);
     } else {
-        u64 initial_microseconds = initial / 1000;
-        CoreTiming::ScheduleEvent(usToCycles(initial_microseconds), timer_callback_event_type,
-                                  callback_handle);
+        CoreTiming::ScheduleEvent(nsToCycles(initial), timer_callback_event_type, callback_handle);
     }
 }
 
@@ -78,8 +76,8 @@ void Timer::WakeupAllWaitingThreads() {
         signaled = false;
 }
 
-void Timer::Signal(int cycles_late) {
-    LOG_TRACE(Kernel, "Timer %u fired", GetObjectId());
+void Timer::Signal(s64 cycles_late) {
+    LOG_TRACE(Kernel, "Timer {} fired", GetObjectId());
 
     signaled = true;
 
@@ -88,19 +86,18 @@ void Timer::Signal(int cycles_late) {
 
     if (interval_delay != 0) {
         // Reschedule the timer with the interval delay
-        u64 interval_microseconds = interval_delay / 1000;
-        CoreTiming::ScheduleEvent(usToCycles(interval_microseconds) - cycles_late,
+        CoreTiming::ScheduleEvent(nsToCycles(interval_delay) - cycles_late,
                                   timer_callback_event_type, callback_handle);
     }
 }
 
 /// The timer callback event, called when a timer is fired
-static void TimerCallback(u64 timer_handle, int cycles_late) {
+static void TimerCallback(u64 timer_handle, s64 cycles_late) {
     SharedPtr<Timer> timer =
         timer_callback_handle_table.Get<Timer>(static_cast<Handle>(timer_handle));
 
     if (timer == nullptr) {
-        LOG_CRITICAL(Kernel, "Callback fired for invalid timer %08" PRIx64, timer_handle);
+        LOG_CRITICAL(Kernel, "Callback fired for invalid timer {:08x}", timer_handle);
         return;
     }
 
@@ -114,4 +111,4 @@ void TimersInit() {
 
 void TimersShutdown() {}
 
-} // namespace
+} // namespace Kernel

@@ -4,9 +4,11 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include "core/hle/kernel/kernel.h"
+
+#include "core/hle/kernel/object.h"
 #include "core/hle/result.h"
 #include "core/hle/service/service.h"
 
@@ -17,8 +19,7 @@ class ServerPort;
 class SessionRequestHandler;
 } // namespace Kernel
 
-namespace Service {
-namespace SM {
+namespace Service::SM {
 
 class SRV;
 
@@ -52,7 +53,4 @@ private:
     std::unordered_map<std::string, Kernel::SharedPtr<Kernel::ClientPort>> registered_services;
 };
 
-extern std::shared_ptr<ServiceManager> g_service_manager;
-
-} // namespace SM
-} // namespace Service
+} // namespace Service::SM

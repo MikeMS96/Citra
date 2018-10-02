@@ -12,7 +12,7 @@
 #include "common/microprofile.h"
 #include "common/vector_math.h"
 #include "core/core_timing.h"
-#include "core/hle/service/gsp_gpu.h"
+#include "core/hle/service/gsp/gsp.h"
 #include "core/hw/gpu.h"
 #include "core/hw/hw.h"
 #include "core/memory.h"
@@ -31,7 +31,7 @@ Regs g_regs;
 /// 268MHz CPU clocks / 60Hz frames per second
 const u64 frame_ticks = static_cast<u64>(BASE_CLOCK_RATE_ARM11 / SCREEN_REFRESH_RATE);
 /// Event id for CoreTiming
-static int vblank_event;
+static CoreTiming::EventType* vblank_event;
 
 template <typename T>
 inline void Read(T& var, const u32 raw_addr) {
@@ -40,7 +40,7 @@ inline void Read(T& var, const u32 raw_addr) {
 
     // Reads other than u32 are untested, so I'd rather have them abort than silently fail
     if (index >= Regs::NumIds() || !std::is_same<T, u32>::value) {
-        LOG_ERROR(HW_GPU, "unknown Read%lu @ 0x%08X", sizeof(var) * 8, addr);
+        LOG_ERROR(HW_GPU, "unknown Read{} @ {:#010X}", sizeof(var) * 8, addr);
         return;
     }
 
@@ -65,7 +65,7 @@ static Math::Vec4<u8> DecodePixel(Regs::PixelFormat input_format, const u8* src_
         return Color::DecodeRGBA4(src_pixel);
 
     default:
-        LOG_ERROR(HW_GPU, "Unknown source framebuffer format %x", static_cast<u32>(input_format));
+        LOG_ERROR(HW_GPU, "Unknown source framebuffer format {:x}", static_cast<u32>(input_format));
         return {0, 0, 0, 0};
     }
 }
@@ -79,37 +79,29 @@ static void MemoryFill(const Regs::MemoryFillConfig& config) {
 
     // TODO: do hwtest with these cases
     if (!Memory::IsValidPhysicalAddress(start_addr)) {
-        LOG_CRITICAL(HW_GPU, "invalid start address 0x%08X", start_addr);
+        LOG_CRITICAL(HW_GPU, "invalid start address {:#010X}", start_addr);
         return;
     }
 
     if (!Memory::IsValidPhysicalAddress(end_addr)) {
-        LOG_CRITICAL(HW_GPU, "invalid end address 0x%08X", end_addr);
+        LOG_CRITICAL(HW_GPU, "invalid end address {:#010X}", end_addr);
         return;
     }
 
     if (end_addr <= start_addr) {
-        LOG_CRITICAL(HW_GPU, "invalid memory range from 0x%08X to 0x%08X", start_addr, end_addr);
+        LOG_CRITICAL(HW_GPU, "invalid memory range from {:#010X} to {:#010X}", start_addr,
+                     end_addr);
         return;
     }
 
     u8* start = Memory::GetPhysicalPointer(start_addr);
     u8* end = Memory::GetPhysicalPointer(end_addr);
 
-    // TODO: Consider always accelerating and returning vector of
-    //       regions that the accelerated fill did not cover to
-    //       reduce/eliminate the fill that the cpu has to do.
-    //       This would also mean that the flush below is not needed.
-    //       Fill should first flush all surfaces that touch but are
-    //       not completely within the fill range.
-    //       Then fill all completely covered surfaces, and return the
-    //       regions that were between surfaces or within the touching
-    //       ones for cpu to manually fill here.
     if (VideoCore::g_renderer->Rasterizer()->AccelerateFill(config))
         return;
 
-    Memory::RasterizerFlushAndInvalidateRegion(config.GetStartAddress(),
-                                               config.GetEndAddress() - config.GetStartAddress());
+    Memory::RasterizerInvalidateRegion(config.GetStartAddress(),
+                                       config.GetEndAddress() - config.GetStartAddress());
 
     if (config.fill_24bit) {
         // fill with 24-bit values
@@ -122,8 +114,8 @@ static void MemoryFill(const Regs::MemoryFillConfig& config) {
         // fill with 32-bit values
         if (end > start) {
             u32 value = config.value_32bit;
-            size_t len = (end - start) / sizeof(u32);
-            for (size_t i = 0; i < len; ++i)
+            std::size_t len = (end - start) / sizeof(u32);
+            for (std::size_t i = 0; i < len; ++i)
                 memcpy(&start[i * sizeof(u32)], &value, sizeof(u32));
         }
     } else {
@@ -140,12 +132,12 @@ static void DisplayTransfer(const Regs::DisplayTransferConfig& config) {
 
     // TODO: do hwtest with these cases
     if (!Memory::IsValidPhysicalAddress(src_addr)) {
-        LOG_CRITICAL(HW_GPU, "invalid input address 0x%08X", src_addr);
+        LOG_CRITICAL(HW_GPU, "invalid input address {:#010X}", src_addr);
         return;
     }
 
     if (!Memory::IsValidPhysicalAddress(dst_addr)) {
-        LOG_CRITICAL(HW_GPU, "invalid output address 0x%08X", dst_addr);
+        LOG_CRITICAL(HW_GPU, "invalid output address {:#010X}", dst_addr);
         return;
     }
 
@@ -176,7 +168,7 @@ static void DisplayTransfer(const Regs::DisplayTransferConfig& config) {
     u8* dst_pointer = Memory::GetPhysicalPointer(dst_addr);
 
     if (config.scaling > config.ScaleXY) {
-        LOG_CRITICAL(HW_GPU, "Unimplemented display transfer scaling mode %u",
+        LOG_CRITICAL(HW_GPU, "Unimplemented display transfer scaling mode {}",
                      config.scaling.Value());
         UNIMPLEMENTED();
         return;
@@ -199,7 +191,7 @@ static void DisplayTransfer(const Regs::DisplayTransferConfig& config) {
     u32 output_size = output_width * output_height * GPU::Regs::BytesPerPixel(config.output_format);
 
     Memory::RasterizerFlushRegion(config.GetPhysicalInputAddress(), input_size);
-    Memory::RasterizerFlushAndInvalidateRegion(config.GetPhysicalOutputAddress(), output_size);
+    Memory::RasterizerInvalidateRegion(config.GetPhysicalOutputAddress(), output_size);
 
     for (u32 y = 0; y < output_height; ++y) {
         for (u32 x = 0; x < output_width; ++x) {
@@ -302,7 +294,7 @@ static void DisplayTransfer(const Regs::DisplayTransferConfig& config) {
                 break;
 
             default:
-                LOG_ERROR(HW_GPU, "Unknown destination framebuffer format %x",
+                LOG_ERROR(HW_GPU, "Unknown destination framebuffer format {:x}",
                           static_cast<u32>(config.output_format.Value()));
                 break;
             }
@@ -316,12 +308,12 @@ static void TextureCopy(const Regs::DisplayTransferConfig& config) {
 
     // TODO: do hwtest with invalid addresses
     if (!Memory::IsValidPhysicalAddress(src_addr)) {
-        LOG_CRITICAL(HW_GPU, "invalid input address 0x%08X", src_addr);
+        LOG_CRITICAL(HW_GPU, "invalid input address {:#010X}", src_addr);
         return;
     }
 
     if (!Memory::IsValidPhysicalAddress(dst_addr)) {
-        LOG_CRITICAL(HW_GPU, "invalid output address 0x%08X", dst_addr);
+        LOG_CRITICAL(HW_GPU, "invalid output address {:#010X}", dst_addr);
         return;
     }
 
@@ -356,15 +348,17 @@ static void TextureCopy(const Regs::DisplayTransferConfig& config) {
         return;
     }
 
-    size_t contiguous_input_size =
+    std::size_t contiguous_input_size =
         config.texture_copy.size / input_width * (input_width + input_gap);
     Memory::RasterizerFlushRegion(config.GetPhysicalInputAddress(),
                                   static_cast<u32>(contiguous_input_size));
 
-    size_t contiguous_output_size =
+    std::size_t contiguous_output_size =
         config.texture_copy.size / output_width * (output_width + output_gap);
-    Memory::RasterizerFlushAndInvalidateRegion(config.GetPhysicalOutputAddress(),
-                                               static_cast<u32>(contiguous_output_size));
+    // Only need to flush output if it has a gap
+    const auto FlushInvalidate_fn = (output_gap != 0) ? Memory::RasterizerFlushAndInvalidateRegion
+                                                      : Memory::RasterizerInvalidateRegion;
+    FlushInvalidate_fn(config.GetPhysicalOutputAddress(), static_cast<u32>(contiguous_output_size));
 
     u32 remaining_input = input_width;
     u32 remaining_output = output_width;
@@ -397,7 +391,7 @@ inline void Write(u32 addr, const T data) {
 
     // Writes other than u32 are untested, so I'd rather have them abort than silently fail
     if (index >= Regs::NumIds() || !std::is_same<T, u32>::value) {
-        LOG_ERROR(HW_GPU, "unknown Write%lu 0x%08X @ 0x%08X", sizeof(data) * 8, (u32)data, addr);
+        LOG_ERROR(HW_GPU, "unknown Write{} {:#010X} @ {:#010X}", sizeof(data) * 8, (u32)data, addr);
         return;
     }
 
@@ -413,7 +407,7 @@ inline void Write(u32 addr, const T data) {
 
         if (config.trigger) {
             MemoryFill(config);
-            LOG_TRACE(HW_GPU, "MemoryFill from 0x%08x to 0x%08x", config.GetStartAddress(),
+            LOG_TRACE(HW_GPU, "MemoryFill from {:#010X} to {:#010X}", config.GetStartAddress(),
                       config.GetEndAddress());
 
             // It seems that it won't signal interrupt if "address_start" is zero.
@@ -446,20 +440,22 @@ inline void Write(u32 addr, const T data) {
 
             if (config.is_texture_copy) {
                 TextureCopy(config);
-                LOG_TRACE(HW_GPU, "TextureCopy: 0x%X bytes from 0x%08X(%u+%u)-> "
-                                  "0x%08X(%u+%u), flags 0x%08X",
+                LOG_TRACE(HW_GPU,
+                          "TextureCopy: {:#X} bytes from {:#010X}({}+{})-> "
+                          "{:#010X}({}+{}), flags {:#010X}",
                           config.texture_copy.size, config.GetPhysicalInputAddress(),
                           config.texture_copy.input_width * 16, config.texture_copy.input_gap * 16,
                           config.GetPhysicalOutputAddress(), config.texture_copy.output_width * 16,
                           config.texture_copy.output_gap * 16, config.flags);
             } else {
                 DisplayTransfer(config);
-                LOG_TRACE(HW_GPU, "DisplayTransfer: 0x%08x(%ux%u)-> "
-                                  "0x%08x(%ux%u), dst format %x, flags 0x%08X",
+                LOG_TRACE(HW_GPU,
+                          "DisplayTransfer: {:#010X}({}x{})-> "
+                          "{:#010X}({}x{}), dst format {:x}, flags {:#010X}",
                           config.GetPhysicalInputAddress(), config.input_width.Value(),
                           config.input_height.Value(), config.GetPhysicalOutputAddress(),
                           config.output_width.Value(), config.output_height.Value(),
-                          config.output_format.Value(), config.flags);
+                          static_cast<u32>(config.output_format.Value()), config.flags);
             }
 
             g_regs.display_transfer_config.trigger = 0;
@@ -514,7 +510,7 @@ template void Write<u16>(u32 addr, const u16 data);
 template void Write<u8>(u32 addr, const u8 data);
 
 /// Update hardware
-static void VBlankCallback(u64 userdata, int cycles_late) {
+static void VBlankCallback(u64 userdata, s64 cycles_late) {
     VideoCore::g_renderer->SwapBuffers();
 
     // Signal to GSP that GPU interrupt has occurred
@@ -570,4 +566,4 @@ void Shutdown() {
     LOG_DEBUG(HW_GPU, "shutdown OK");
 }
 
-} // namespace
+} // namespace GPU

@@ -7,7 +7,6 @@
 #include "common/logging/log.h"
 #include "core/hle/kernel/errors.h"
 #include "core/hle/kernel/handle_table.h"
-#include "core/hle/kernel/kernel.h"
 #include "core/hle/kernel/process.h"
 #include "core/hle/kernel/thread.h"
 
@@ -47,7 +46,7 @@ ResultVal<Handle> HandleTable::Create(SharedPtr<Object> obj) {
 ResultVal<Handle> HandleTable::Duplicate(Handle handle) {
     SharedPtr<Object> object = GetGeneric(handle);
     if (object == nullptr) {
-        LOG_ERROR(Kernel, "Tried to duplicate invalid handle: %08X", handle);
+        LOG_ERROR(Kernel, "Tried to duplicate invalid handle: {:08X}", handle);
         return ERR_INVALID_HANDLE;
     }
     return Create(std::move(object));
@@ -67,7 +66,7 @@ ResultCode HandleTable::Close(Handle handle) {
 }
 
 bool HandleTable::IsValid(Handle handle) const {
-    size_t slot = GetSlot(handle);
+    std::size_t slot = GetSlot(handle);
     u16 generation = GetGeneration(handle);
 
     return slot < MAX_COUNT && objects[slot] != nullptr && generations[slot] == generation;
@@ -94,4 +93,4 @@ void HandleTable::Clear() {
     next_free_slot = 0;
 }
 
-} // namespace
+} // namespace Kernel

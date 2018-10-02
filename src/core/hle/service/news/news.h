@@ -4,14 +4,8 @@
 
 #pragma once
 
-namespace Service {
-namespace NEWS {
+namespace Service::NEWS {
 
-/// Initialize NEWS service(s)
-void Init();
+void InstallInterfaces(SM::ServiceManager& service_manager);
 
-/// Shutdown NEWS service(s)
-void Shutdown();
-
-} // namespace NEWS
-} // namespace Service
+} // namespace Service::NEWS

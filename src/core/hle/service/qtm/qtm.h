@@ -4,11 +4,11 @@
 
 #pragma once
 
-namespace Service {
-namespace QTM {
+#include "core/hle/service/service.h"
+
+namespace Service::QTM {
 
 /// Initializes all QTM services.
-void Init();
+void InstallInterfaces(SM::ServiceManager& service_manager);
 
-} // namespace QTM
-} // namespace Service
+} // namespace Service::QTM

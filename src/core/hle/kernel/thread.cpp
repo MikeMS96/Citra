@@ -27,10 +27,10 @@
 namespace Kernel {
 
 /// Event type for the thread wake up event
-static int ThreadWakeupEventType;
+static CoreTiming::EventType* ThreadWakeupEventType = nullptr;
 
 bool Thread::ShouldWait(Thread* thread) const {
-    return status != THREADSTATUS_DEAD;
+    return status != ThreadStatus::Dead;
 }
 
 void Thread::Acquire(Thread* thread) {
@@ -45,7 +45,7 @@ static Kernel::HandleTable wakeup_callback_handle_table;
 static std::vector<SharedPtr<Thread>> thread_list;
 
 // Lists only ready thread ids.
-static Common::ThreadQueueList<Thread*, THREADPRIO_LOWEST + 1> ready_queue;
+static Common::ThreadQueueList<Thread*, ThreadPrioLowest + 1> ready_queue;
 
 static SharedPtr<Thread> current_thread;
 
@@ -60,21 +60,11 @@ inline static u32 const NewThreadId() {
     return next_thread_id++;
 }
 
-Thread::Thread() {}
+Thread::Thread() : context(Core::CPU().NewContext()) {}
 Thread::~Thread() {}
 
 Thread* GetCurrentThread() {
     return current_thread.get();
-}
-
-/**
- * Check if the specified thread is waiting on the specified address to be arbitrated
- * @param thread The thread to test
- * @param wait_address The address to test against
- * @return True if the thread is waiting, false otherwise
- */
-static bool CheckWait_AddressArbiter(const Thread* thread, VAddr wait_address) {
-    return thread->status == THREADSTATUS_WAIT_ARB && wait_address == thread->wait_address;
 }
 
 void Thread::Stop() {
@@ -85,11 +75,11 @@ void Thread::Stop() {
 
     // Clean up thread from ready queue
     // This is only needed when the thread is termintated forcefully (SVC TerminateProcess)
-    if (status == THREADSTATUS_READY) {
+    if (status == ThreadStatus::Ready) {
         ready_queue.remove(current_priority, this);
     }
 
-    status = THREADSTATUS_DEAD;
+    status = ThreadStatus::Dead;
 
     WakeupAllWaitingThreads();
 
@@ -109,40 +99,6 @@ void Thread::Stop() {
     Kernel::g_current_process->tls_slots[tls_page].reset(tls_slot);
 }
 
-Thread* ArbitrateHighestPriorityThread(u32 address) {
-    Thread* highest_priority_thread = nullptr;
-    u32 priority = THREADPRIO_LOWEST;
-
-    // Iterate through threads, find highest priority thread that is waiting to be arbitrated...
-    for (auto& thread : thread_list) {
-        if (!CheckWait_AddressArbiter(thread.get(), address))
-            continue;
-
-        if (thread == nullptr)
-            continue;
-
-        if (thread->current_priority <= priority) {
-            highest_priority_thread = thread.get();
-            priority = thread->current_priority;
-        }
-    }
-
-    // If a thread was arbitrated, resume it
-    if (nullptr != highest_priority_thread) {
-        highest_priority_thread->ResumeFromWait();
-    }
-
-    return highest_priority_thread;
-}
-
-void ArbitrateAllThreads(u32 address) {
-    // Resume all threads found to be waiting on the address
-    for (auto& thread : thread_list) {
-        if (CheckWait_AddressArbiter(thread.get(), address))
-            thread->ResumeFromWait();
-    }
-}
-
 /**
  * Switches the CPU's active thread context to that of the specified thread
  * @param new_thread The thread to switch to
@@ -155,17 +111,17 @@ static void SwitchContext(Thread* new_thread) {
         previous_thread->last_running_ticks = CoreTiming::GetTicks();
         Core::CPU().SaveContext(previous_thread->context);
 
-        if (previous_thread->status == THREADSTATUS_RUNNING) {
+        if (previous_thread->status == ThreadStatus::Running) {
             // This is only the case when a reschedule is triggered without the current thread
             // yielding execution (i.e. an event triggered, system core time-sliced, etc)
             ready_queue.push_front(previous_thread->current_priority, previous_thread);
-            previous_thread->status = THREADSTATUS_READY;
+            previous_thread->status = ThreadStatus::Ready;
         }
     }
 
     // Load context of new thread
     if (new_thread) {
-        ASSERT_MSG(new_thread->status == THREADSTATUS_READY,
+        ASSERT_MSG(new_thread->status == ThreadStatus::Ready,
                    "Thread must be ready to become running.");
 
         // Cancel any outstanding wakeup events for this thread
@@ -176,7 +132,7 @@ static void SwitchContext(Thread* new_thread) {
         current_thread = new_thread;
 
         ready_queue.remove(new_thread->current_priority, new_thread);
-        new_thread->status = THREADSTATUS_RUNNING;
+        new_thread->status = ThreadStatus::Running;
 
         if (previous_process != current_thread->owner_process) {
             Kernel::g_current_process = current_thread->owner_process;
@@ -200,7 +156,7 @@ static Thread* PopNextReadyThread() {
     Thread* next;
     Thread* thread = GetCurrentThread();
 
-    if (thread && thread->status == THREADSTATUS_RUNNING) {
+    if (thread && thread->status == ThreadStatus::Running) {
         // We have to do better than the current thread.
         // This call returns null when that's not possible.
         next = ready_queue.pop_first_better(thread->current_priority);
@@ -217,13 +173,7 @@ static Thread* PopNextReadyThread() {
 
 void WaitCurrentThread_Sleep() {
     Thread* thread = GetCurrentThread();
-    thread->status = THREADSTATUS_WAIT_SLEEP;
-}
-
-void WaitCurrentThread_ArbitrateAddress(VAddr wait_address) {
-    Thread* thread = GetCurrentThread();
-    thread->wait_address = wait_address;
-    thread->status = THREADSTATUS_WAIT_ARB;
+    thread->status = ThreadStatus::WaitSleep;
 }
 
 void ExitCurrentThread() {
@@ -238,15 +188,16 @@ void ExitCurrentThread() {
  * @param thread_handle The handle of the thread that's been awoken
  * @param cycles_late The number of CPU cycles that have passed since the desired wakeup time
  */
-static void ThreadWakeupCallback(u64 thread_handle, int cycles_late) {
+static void ThreadWakeupCallback(u64 thread_handle, s64 cycles_late) {
     SharedPtr<Thread> thread = wakeup_callback_handle_table.Get<Thread>((Handle)thread_handle);
     if (thread == nullptr) {
-        LOG_CRITICAL(Kernel, "Callback fired for invalid thread %08X", (Handle)thread_handle);
+        LOG_CRITICAL(Kernel, "Callback fired for invalid thread {:08X}", (Handle)thread_handle);
         return;
     }
 
-    if (thread->status == THREADSTATUS_WAIT_SYNCH_ANY ||
-        thread->status == THREADSTATUS_WAIT_SYNCH_ALL || thread->status == THREADSTATUS_WAIT_ARB) {
+    if (thread->status == ThreadStatus::WaitSynchAny ||
+        thread->status == ThreadStatus::WaitSynchAll || thread->status == ThreadStatus::WaitArb ||
+        thread->status == ThreadStatus::WaitHleEvent) {
 
         // Invoke the wakeup callback before clearing the wait objects
         if (thread->wakeup_callback)
@@ -266,36 +217,36 @@ void Thread::WakeAfterDelay(s64 nanoseconds) {
     if (nanoseconds == -1)
         return;
 
-    u64 microseconds = nanoseconds / 1000;
-    CoreTiming::ScheduleEvent(usToCycles(microseconds), ThreadWakeupEventType, callback_handle);
+    CoreTiming::ScheduleEvent(nsToCycles(nanoseconds), ThreadWakeupEventType, callback_handle);
 }
 
 void Thread::ResumeFromWait() {
     ASSERT_MSG(wait_objects.empty(), "Thread is waking up while waiting for objects");
 
     switch (status) {
-    case THREADSTATUS_WAIT_SYNCH_ALL:
-    case THREADSTATUS_WAIT_SYNCH_ANY:
-    case THREADSTATUS_WAIT_ARB:
-    case THREADSTATUS_WAIT_SLEEP:
-    case THREADSTATUS_WAIT_IPC:
+    case ThreadStatus::WaitSynchAll:
+    case ThreadStatus::WaitSynchAny:
+    case ThreadStatus::WaitHleEvent:
+    case ThreadStatus::WaitArb:
+    case ThreadStatus::WaitSleep:
+    case ThreadStatus::WaitIPC:
         break;
 
-    case THREADSTATUS_READY:
+    case ThreadStatus::Ready:
         // The thread's wakeup callback must have already been cleared when the thread was first
         // awoken.
         ASSERT(wakeup_callback == nullptr);
         // If the thread is waiting on multiple wait objects, it might be awoken more than once
         // before actually resuming. We can ignore subsequent wakeups if the thread status has
-        // already been set to THREADSTATUS_READY.
+        // already been set to ThreadStatus::Ready.
         return;
 
-    case THREADSTATUS_RUNNING:
-        DEBUG_ASSERT_MSG(false, "Thread with object id %u has already resumed.", GetObjectId());
+    case ThreadStatus::Running:
+        DEBUG_ASSERT_MSG(false, "Thread with object id {} has already resumed.", GetObjectId());
         return;
-    case THREADSTATUS_DEAD:
+    case ThreadStatus::Dead:
         // This should never happen, as threads must complete before being stopped.
-        DEBUG_ASSERT_MSG(false, "Thread with object id %u cannot be resumed because it's DEAD.",
+        DEBUG_ASSERT_MSG(false, "Thread with object id {} cannot be resumed because it's DEAD.",
                          GetObjectId());
         return;
     }
@@ -303,7 +254,7 @@ void Thread::ResumeFromWait() {
     wakeup_callback = nullptr;
 
     ready_queue.push_back(current_priority, this);
-    status = THREADSTATUS_READY;
+    status = ThreadStatus::Ready;
     Core::System::GetInstance().PrepareReschedule();
 }
 
@@ -315,14 +266,14 @@ static void DebugThreadQueue() {
     if (!thread) {
         LOG_DEBUG(Kernel, "Current: NO CURRENT THREAD");
     } else {
-        LOG_DEBUG(Kernel, "0x%02X %u (current)", thread->current_priority,
+        LOG_DEBUG(Kernel, "0x{:02X} {} (current)", thread->current_priority,
                   GetCurrentThread()->GetObjectId());
     }
 
     for (auto& t : thread_list) {
         u32 priority = ready_queue.contains(t.get());
         if (priority != -1) {
-            LOG_DEBUG(Kernel, "0x%02X %u", priority, t->GetObjectId());
+            LOG_DEBUG(Kernel, "0x{:02X} {}", priority, t->GetObjectId());
         }
     }
 }
@@ -335,13 +286,14 @@ static void DebugThreadQueue() {
  * slot: The index of the first free slot in the indicated page.
  * alloc_needed: Whether there's a need to allocate a new TLS page (All pages are full).
  */
-std::tuple<u32, u32, bool> GetFreeThreadLocalSlot(std::vector<std::bitset<8>>& tls_slots) {
+static std::tuple<std::size_t, std::size_t, bool> GetFreeThreadLocalSlot(
+    const std::vector<std::bitset<8>>& tls_slots) {
     // Iterate over all the allocated pages, and try to find one where not all slots are used.
-    for (unsigned page = 0; page < tls_slots.size(); ++page) {
+    for (std::size_t page = 0; page < tls_slots.size(); ++page) {
         const auto& page_tls_slots = tls_slots[page];
         if (!page_tls_slots.all()) {
             // We found a page with at least one free slot, find which slot it is
-            for (unsigned slot = 0; slot < page_tls_slots.size(); ++slot) {
+            for (std::size_t slot = 0; slot < page_tls_slots.size(); ++slot) {
                 if (!page_tls_slots.test(slot)) {
                     return std::make_tuple(page, slot, false);
                 }
@@ -359,34 +311,33 @@ std::tuple<u32, u32, bool> GetFreeThreadLocalSlot(std::vector<std::bitset<8>>& t
  * @param entry_point Address of entry point for execution
  * @param arg User argument for thread
  */
-static void ResetThreadContext(ARM_Interface::ThreadContext& context, u32 stack_top,
-                               u32 entry_point, u32 arg) {
-    memset(&context, 0, sizeof(ARM_Interface::ThreadContext));
-
-    context.cpu_registers[0] = arg;
-    context.pc = entry_point;
-    context.sp = stack_top;
-    context.cpsr = USER32MODE | ((entry_point & 1) << 5); // Usermode and THUMB mode
+static void ResetThreadContext(const std::unique_ptr<ARM_Interface::ThreadContext>& context,
+                               u32 stack_top, u32 entry_point, u32 arg) {
+    context->Reset();
+    context->SetCpuRegister(0, arg);
+    context->SetProgramCounter(entry_point);
+    context->SetStackPointer(stack_top);
+    context->SetCpsr(USER32MODE | ((entry_point & 1) << 5)); // Usermode and THUMB mode
 }
 
 ResultVal<SharedPtr<Thread>> Thread::Create(std::string name, VAddr entry_point, u32 priority,
                                             u32 arg, s32 processor_id, VAddr stack_top,
                                             SharedPtr<Process> owner_process) {
     // Check if priority is in ranged. Lowest priority -> highest priority id.
-    if (priority > THREADPRIO_LOWEST) {
-        LOG_ERROR(Kernel_SVC, "Invalid thread priority: %d", priority);
+    if (priority > ThreadPrioLowest) {
+        LOG_ERROR(Kernel_SVC, "Invalid thread priority: {}", priority);
         return ERR_OUT_OF_RANGE;
     }
 
-    if (processor_id > THREADPROCESSORID_MAX) {
-        LOG_ERROR(Kernel_SVC, "Invalid processor id: %d", processor_id);
+    if (processor_id > ThreadProcessorIdMax) {
+        LOG_ERROR(Kernel_SVC, "Invalid processor id: {}", processor_id);
         return ERR_OUT_OF_RANGE_KERNEL;
     }
 
     // TODO(yuriks): Other checks, returning 0xD9001BEA
 
     if (!Memory::IsValidVirtualAddress(*owner_process, entry_point)) {
-        LOG_ERROR(Kernel_SVC, "(name=%s): invalid entry %08x", name.c_str(), entry_point);
+        LOG_ERROR(Kernel_SVC, "(name={}): invalid entry {:08x}", name, entry_point);
         // TODO: Verify error
         return ResultCode(ErrorDescription::InvalidAddress, ErrorModule::Kernel,
                           ErrorSummary::InvalidArgument, ErrorLevel::Permanent);
@@ -398,7 +349,7 @@ ResultVal<SharedPtr<Thread>> Thread::Create(std::string name, VAddr entry_point,
     ready_queue.prepare(priority);
 
     thread->thread_id = NewThreadId();
-    thread->status = THREADSTATUS_DORMANT;
+    thread->status = ThreadStatus::Dormant;
     thread->entry_point = entry_point;
     thread->stack_top = stack_top;
     thread->nominal_priority = thread->current_priority = priority;
@@ -412,11 +363,8 @@ ResultVal<SharedPtr<Thread>> Thread::Create(std::string name, VAddr entry_point,
 
     // Find the next available TLS index, and mark it as used
     auto& tls_slots = owner_process->tls_slots;
-    bool needs_allocation = true;
-    u32 available_page; // Which allocated page has free space
-    u32 available_slot; // Which slot within the page is free
 
-    std::tie(available_page, available_slot, needs_allocation) = GetFreeThreadLocalSlot(tls_slots);
+    auto [available_page, available_slot, needs_allocation] = GetFreeThreadLocalSlot(tls_slots);
 
     if (needs_allocation) {
         // There are no already-allocated pages with free slots, lets allocate a new one.
@@ -430,7 +378,7 @@ ResultVal<SharedPtr<Thread>> Thread::Create(std::string name, VAddr entry_point,
             return ERR_OUT_OF_MEMORY;
         }
 
-        size_t offset = linheap_memory->size();
+        std::size_t offset = linheap_memory->size();
 
         // Allocate some memory from the end of the linear heap for this region.
         linheap_memory->insert(linheap_memory->end(), Memory::PAGE_SIZE, 0);
@@ -438,7 +386,7 @@ ResultVal<SharedPtr<Thread>> Thread::Create(std::string name, VAddr entry_point,
         owner_process->linear_heap_used += Memory::PAGE_SIZE;
 
         tls_slots.emplace_back(0); // The page is completely available at the start
-        available_page = static_cast<u32>(tls_slots.size() - 1);
+        available_page = tls_slots.size() - 1;
         available_slot = 0; // Use the first slot in the new page
 
         auto& vm_manager = owner_process->vm_manager;
@@ -460,16 +408,16 @@ ResultVal<SharedPtr<Thread>> Thread::Create(std::string name, VAddr entry_point,
     ResetThreadContext(thread->context, stack_top, entry_point, arg);
 
     ready_queue.push_back(thread->current_priority, thread.get());
-    thread->status = THREADSTATUS_READY;
+    thread->status = ThreadStatus::Ready;
 
     return MakeResult<SharedPtr<Thread>>(std::move(thread));
 }
 
 void Thread::SetPriority(u32 priority) {
-    ASSERT_MSG(priority <= THREADPRIO_LOWEST && priority >= THREADPRIO_HIGHEST,
+    ASSERT_MSG(priority <= ThreadPrioLowest && priority >= ThreadPrioHighest,
                "Invalid priority value.");
     // If thread was ready, adjust queues
-    if (status == THREADSTATUS_READY)
+    if (status == ThreadStatus::Ready)
         ready_queue.move(this, current_priority, priority);
     else
         ready_queue.prepare(priority);
@@ -488,7 +436,7 @@ void Thread::UpdatePriority() {
 
 void Thread::BoostPriority(u32 priority) {
     // If thread was ready, adjust queues
-    if (status == THREADSTATUS_READY)
+    if (status == ThreadStatus::Ready)
         ready_queue.move(this, current_priority, priority);
     else
         ready_queue.prepare(priority);
@@ -503,8 +451,8 @@ SharedPtr<Thread> SetupMainThread(u32 entry_point, u32 priority, SharedPtr<Proce
 
     SharedPtr<Thread> thread = std::move(thread_res).Unwrap();
 
-    thread->context.fpscr =
-        FPSCR_DEFAULT_NAN | FPSCR_FLUSH_TO_ZERO | FPSCR_ROUND_TOZERO | FPSCR_IXC; // 0x03C00010
+    thread->context->SetFpscr(FPSCR_DEFAULT_NAN | FPSCR_FLUSH_TO_ZERO | FPSCR_ROUND_TOZERO |
+                              FPSCR_IXC); // 0x03C00010
 
     // Note: The newly created thread will be run when the scheduler fires.
     return thread;
@@ -519,22 +467,22 @@ void Reschedule() {
     Thread* next = PopNextReadyThread();
 
     if (cur && next) {
-        LOG_TRACE(Kernel, "context switch %u -> %u", cur->GetObjectId(), next->GetObjectId());
+        LOG_TRACE(Kernel, "context switch {} -> {}", cur->GetObjectId(), next->GetObjectId());
     } else if (cur) {
-        LOG_TRACE(Kernel, "context switch %u -> idle", cur->GetObjectId());
+        LOG_TRACE(Kernel, "context switch {} -> idle", cur->GetObjectId());
     } else if (next) {
-        LOG_TRACE(Kernel, "context switch idle -> %u", next->GetObjectId());
+        LOG_TRACE(Kernel, "context switch idle -> {}", next->GetObjectId());
     }
 
     SwitchContext(next);
 }
 
 void Thread::SetWaitSynchronizationResult(ResultCode result) {
-    context.cpu_registers[0] = result.raw;
+    context->SetCpuRegister(0, result.raw);
 }
 
 void Thread::SetWaitSynchronizationOutput(s32 output) {
-    context.cpu_registers[1] = output;
+    context->SetCpuRegister(1, output);
 }
 
 s32 Thread::GetWaitObjectIndex(WaitObject* object) const {
@@ -566,6 +514,7 @@ void ThreadingShutdown() {
     }
     thread_list.clear();
     ready_queue.clear();
+    ClearProcessList();
 }
 
 const std::vector<SharedPtr<Thread>>& GetThreadList() {

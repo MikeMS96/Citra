@@ -6,7 +6,7 @@
 #include "common/assert.h"
 #include "core/hle/kernel/client_port.h"
 #include "core/hle/kernel/errors.h"
-#include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/object.h"
 #include "core/hle/kernel/server_port.h"
 #include "core/hle/kernel/server_session.h"
 #include "core/hle/kernel/thread.h"
@@ -50,4 +50,4 @@ std::tuple<SharedPtr<ServerPort>, SharedPtr<ClientPort>> ServerPort::CreatePortP
     return std::make_tuple(std::move(server_port), std::move(client_port));
 }
 
-} // namespace
+} // namespace Kernel

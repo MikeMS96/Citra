@@ -6,17 +6,11 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
-class NWM_TST final : public Interface {
+class NWM_TST final : public ServiceFramework<NWM_TST> {
 public:
     NWM_TST();
-
-    std::string GetPortName() const override {
-        return "nwm::TST";
-    }
 };
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

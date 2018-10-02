@@ -7,8 +7,11 @@
 #include <vector>
 #include "core/memory.h"
 
-namespace Service {
-namespace LDR {
+namespace Kernel {
+class Process;
+}
+
+namespace Service::LDR {
 
 /**
  * This is a work-around before we implement memory aliasing.
@@ -24,7 +27,7 @@ public:
     void ResizeMemoryBlock(VAddr mapping, VAddr original, u32 size);
     void RemoveMemoryBlock(VAddr mapping, VAddr original);
 
-    void SynchronizeOriginalMemory();
+    void SynchronizeOriginalMemory(Kernel::Process& process);
 
 private:
     struct MemoryBlock {
@@ -38,5 +41,4 @@ private:
     auto FindMemoryBlock(VAddr mapping, VAddr original);
 };
 
-} // namespace LDR
-} // namespace Service
+} // namespace Service::LDR

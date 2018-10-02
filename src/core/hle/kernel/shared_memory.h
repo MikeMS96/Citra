@@ -6,7 +6,7 @@
 
 #include <string>
 #include "common/common_types.h"
-#include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/object.h"
 #include "core/hle/kernel/process.h"
 #include "core/hle/result.h"
 
@@ -98,10 +98,10 @@ public:
     ResultCode Unmap(Process* target_process, VAddr address);
 
     /**
-    * Gets a pointer to the shared memory block
-    * @param offset Offset from the start of the shared memory block to get pointer
-    * @return Pointer to the shared memory block from the specified offset
-    */
+     * Gets a pointer to the shared memory block
+     * @param offset Offset from the start of the shared memory block to get pointer
+     * @return Pointer to the shared memory block from the specified offset
+     */
     u8* GetPointer(u32 offset = 0);
 
     /// Process that created this shared memory block.
@@ -114,7 +114,7 @@ public:
     /// Backing memory for this shared memory block.
     std::shared_ptr<std::vector<u8>> backing_block;
     /// Offset into the backing block for this shared memory.
-    size_t backing_block_offset;
+    std::size_t backing_block_offset;
     /// Size of the memory block. Page-aligned.
     u32 size;
     /// Permission restrictions applied to the process which created the block.
@@ -129,4 +129,4 @@ private:
     ~SharedMemory() override;
 };
 
-} // namespace
+} // namespace Kernel

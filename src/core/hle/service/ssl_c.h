@@ -4,19 +4,23 @@
 
 #pragma once
 
+#include <random>
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace SSL {
+namespace Service::SSL {
 
-class SSL_C final : public Interface {
+class SSL_C final : public ServiceFramework<SSL_C> {
 public:
     SSL_C();
 
-    std::string GetPortName() const override {
-        return "ssl:C";
-    }
+private:
+    void Initialize(Kernel::HLERequestContext& ctx);
+    void GenerateRandomData(Kernel::HLERequestContext& ctx);
+
+    // TODO: Implement a proper CSPRNG in the future when actual security is needed
+    std::mt19937 rand_gen;
 };
 
-} // namespace SSL
-} // namespace Service
+void InstallInterfaces(SM::ServiceManager& service_manager);
+
+} // namespace Service::SSL

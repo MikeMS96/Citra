@@ -5,16 +5,16 @@
 #pragma once
 
 #include <array>
-#include <queue>
 #include <vector>
+#include <queue>
+#include "audio_core/audio_types.h"
 #include "audio_core/codec.h"
 #include "audio_core/hle/common.h"
-#include "audio_core/hle/dsp.h"
 #include "audio_core/hle/filter.h"
 #include "audio_core/interpolate.h"
 #include "common/common_types.h"
 
-namespace DSP {
+namespace AudioCore {
 namespace HLE {
 
 /**
@@ -28,7 +28,7 @@ namespace HLE {
  */
 class Source final {
 public:
-    explicit Source(size_t source_id_) : source_id(source_id_) {
+    explicit Source(std::size_t source_id_) : source_id(source_id_) {
         Reset();
     }
 
@@ -52,10 +52,10 @@ public:
      * @param dest The QuadFrame32 to mix into.
      * @param intermediate_mix_id The id of the intermediate mix whose gains we are using.
      */
-    void MixInto(QuadFrame32& dest, size_t intermediate_mix_id) const;
+    void MixInto(QuadFrame32& dest, std::size_t intermediate_mix_id) const;
 
 private:
-    const size_t source_id;
+    const std::size_t source_id;
     StereoFrame16 current_frame;
 
     using Format = SourceConfiguration::Configuration::Format;
@@ -146,4 +146,4 @@ private:
 };
 
 } // namespace HLE
-} // namespace DSP
+} // namespace AudioCore

@@ -4,11 +4,11 @@
 
 #pragma once
 
-namespace Service {
-namespace MVD {
+#include "core/hle/service/service.h"
+
+namespace Service::MVD {
 
 /// Initializes all MVD services.
-void Init();
+void InstallInterfaces(SM::ServiceManager& service_manager);
 
-} // namespace MVD
-} // namespace Service
+} // namespace Service::MVD

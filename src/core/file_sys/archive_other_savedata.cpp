@@ -3,6 +3,7 @@
 // Refer to the license.txt file included.
 
 #include <tuple>
+#include <utility>
 #include "core/file_sys/archive_other_savedata.h"
 #include "core/file_sys/errors.h"
 #include "core/hle/kernel/process.h"
@@ -21,15 +22,15 @@ namespace {
 
 template <typename T>
 ResultVal<std::tuple<MediaType, u64>> ParsePath(const Path& path, T program_id_reader) {
-    if (path.GetType() != Binary) {
-        LOG_ERROR(Service_FS, "Wrong path type %d", static_cast<int>(path.GetType()));
+    if (path.GetType() != LowPathType::Binary) {
+        LOG_ERROR(Service_FS, "Wrong path type {}", static_cast<int>(path.GetType()));
         return ERROR_INVALID_PATH;
     }
 
     std::vector<u8> vec_data = path.AsBinary();
 
     if (vec_data.size() != 12) {
-        LOG_ERROR(Service_FS, "Wrong path length %zu", vec_data.size());
+        LOG_ERROR(Service_FS, "Wrong path length {}", vec_data.size());
         return ERROR_INVALID_PATH;
     }
 
@@ -37,7 +38,7 @@ ResultVal<std::tuple<MediaType, u64>> ParsePath(const Path& path, T program_id_r
     auto media_type = static_cast<MediaType>(data[0]);
 
     if (media_type != MediaType::SDMC && media_type != MediaType::GameCard) {
-        LOG_ERROR(Service_FS, "Unsupported media type %u", static_cast<u32>(media_type));
+        LOG_ERROR(Service_FS, "Unsupported media type {}", static_cast<u32>(media_type));
 
         // Note: this is strange, but the error code was verified with a real 3DS
         return ERROR_UNSUPPORTED_OPEN_FLAGS;
@@ -60,7 +61,7 @@ ResultVal<std::tuple<MediaType, u64>> ParsePathGeneral(const Path& path) {
 
 ArchiveFactory_OtherSaveDataPermitted::ArchiveFactory_OtherSaveDataPermitted(
     std::shared_ptr<ArchiveSource_SDSaveData> sd_savedata)
-    : sd_savedata_source(sd_savedata) {}
+    : sd_savedata_source(std::move(sd_savedata)) {}
 
 ResultVal<std::unique_ptr<ArchiveBackend>> ArchiveFactory_OtherSaveDataPermitted::Open(
     const Path& path) {
@@ -98,7 +99,7 @@ ResultVal<ArchiveFormatInfo> ArchiveFactory_OtherSaveDataPermitted::GetFormatInf
 
 ArchiveFactory_OtherSaveDataGeneral::ArchiveFactory_OtherSaveDataGeneral(
     std::shared_ptr<ArchiveSource_SDSaveData> sd_savedata)
-    : sd_savedata_source(sd_savedata) {}
+    : sd_savedata_source(std::move(sd_savedata)) {}
 
 ResultVal<std::unique_ptr<ArchiveBackend>> ArchiveFactory_OtherSaveDataGeneral::Open(
     const Path& path) {

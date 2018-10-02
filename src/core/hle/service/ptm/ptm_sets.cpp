@@ -4,17 +4,14 @@
 
 #include "core/hle/service/ptm/ptm_sets.h"
 
-namespace Service {
-namespace PTM {
+namespace Service::PTM {
 
-const Interface::FunctionInfo FunctionTable[] = {
-    // Note that this service does not have access to ptm:u's common commands
-    {0x00010080, nullptr, "SetSystemTime"},
-};
-
-PTM_Sets::PTM_Sets() {
-    Register(FunctionTable);
+PTM_Sets::PTM_Sets(std::shared_ptr<Module> ptm) : Module::Interface(std::move(ptm), "ptm:sets", 1) {
+    static const FunctionInfo functions[] = {
+        // Note that this service does not have access to ptm:u's common commands
+        {0x00010080, nullptr, "SetSystemTime"},
+    };
+    RegisterHandlers(functions);
 }
 
-} // namespace PTM
-} // namespace Service
+} // namespace Service::PTM

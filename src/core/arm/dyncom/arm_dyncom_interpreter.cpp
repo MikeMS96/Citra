@@ -18,8 +18,9 @@
 #include "core/arm/skyeye_common/armstate.h"
 #include "core/arm/skyeye_common/armsupp.h"
 #include "core/arm/skyeye_common/vfp/vfp.h"
+#include "core/core_timing.h"
 #include "core/gdbstub/gdbstub.h"
-#include "core/hle/svc.h"
+#include "core/hle/kernel/svc.h"
 #include "core/memory.h"
 
 #define RM BITS(sht_oper, 0, 3)
@@ -230,7 +231,7 @@ static unsigned int DPO(RotateRightByRegister)(ARMul_State* cpu, unsigned int sh
 }
 
 #define DEBUG_MSG                                                                                  \
-    LOG_DEBUG(Core_ARM11, "inst is %x", inst);                                                     \
+    LOG_DEBUG(Core_ARM11, "inst is {:x}", inst);                                                   \
     CITRA_IGNORE_EXIT(0)
 
 #define LnSWoUB(s) glue(LnSWoUB, s)
@@ -827,10 +828,10 @@ static unsigned int InterpreterTranslateInstruction(const ARMul_State* cpu, cons
 
     int idx;
     if (DecodeARMInstruction(inst, &idx) == ARMDecodeStatus::FAILURE) {
-        LOG_ERROR(Core_ARM11, "Decode failure.\tPC: [0x%08" PRIX32 "]\tInstruction: %08" PRIX32,
-                  phys_addr, inst);
-        LOG_ERROR(Core_ARM11, "cpsr=0x%" PRIX32 ", cpu->TFlag=%d, r15=0x%08" PRIX32, cpu->Cpsr,
-                  cpu->TFlag, cpu->Reg[15]);
+        LOG_ERROR(Core_ARM11, "Decode failure.\tPC: [{:#010X}]\tInstruction: {:08X}", phys_addr,
+                  inst);
+        LOG_ERROR(Core_ARM11, "cpsr={:#X}, cpu->TFlag={}, r15={:#010X}", cpu->Cpsr, cpu->TFlag,
+                  cpu->Reg[15]);
         CITRA_IGNORE_EXIT(-1);
     }
     inst_base = arm_instruction_trans[idx](inst, idx);
@@ -955,7 +956,7 @@ unsigned InterpreterMainLoop(ARMul_State* cpu) {
     if (GDBStub::IsServerEnabled()) {                                                              \
         if (GDBStub::IsMemoryBreak() || (breakpoint_data.type != GDBStub::BreakpointType::None &&  \
                                          PC == breakpoint_data.address)) {                         \
-            GDBStub::Break();                                                                      \
+            cpu->RecordBreak(breakpoint_data);                                                     \
             goto END;                                                                              \
         }                                                                                          \
     }
@@ -1403,7 +1404,6 @@ unsigned InterpreterMainLoop(ARMul_State* cpu) {
     cpu->VFlag = (cpu->Cpsr >> 28) & 1;                                                            \
     cpu->TFlag = (cpu->Cpsr >> 5) & 1;
 
-#define CurrentModeHasSPSR (cpu->Mode != SYSTEM32MODE) && (cpu->Mode != USER32MODE)
 #define PC (cpu->Reg[15])
 
 // GCC and Clang have a C++ extension to support a lookup table of labels. Otherwise, fallback
@@ -1669,7 +1669,7 @@ ADC_INST : {
         RD = AddWithCarry(rn_val, SHIFTER_OPERAND, cpu->CFlag, &carry, &overflow);
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -1701,7 +1701,7 @@ ADD_INST : {
         RD = AddWithCarry(rn_val, SHIFTER_OPERAND, 0, &carry, &overflow);
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Cpsr & 0x1F);
                 LOAD_NZCVT;
@@ -1735,7 +1735,7 @@ AND_INST : {
         RD = lop & rop;
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Cpsr & 0x1F);
                 LOAD_NZCVT;
@@ -1779,7 +1779,7 @@ BIC_INST : {
         u32 rop = SHIFTER_OPERAND;
         RD = lop & (~rop);
         if ((inst_cream->S) && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -1802,7 +1802,7 @@ BIC_INST : {
 BKPT_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
         bkpt_inst* const inst_cream = (bkpt_inst*)inst_base->component;
-        LOG_DEBUG(Core_ARM11, "Breakpoint instruction hit. Immediate: 0x%08X", inst_cream->imm);
+        LOG_DEBUG(Core_ARM11, "Breakpoint instruction hit. Immediate: {:#010X}", inst_cream->imm);
     }
     cpu->Reg[15] += cpu->GetInstructionSize();
     INC_PC(sizeof(bkpt_inst));
@@ -1995,7 +1995,7 @@ EOR_INST : {
         u32 rop = SHIFTER_OPERAND;
         RD = lop ^ rop;
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -2075,7 +2075,7 @@ LDM_INST : {
                 }
             }
 
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Cpsr & 0x1F);
                 LOAD_NZCVT;
@@ -2368,7 +2368,7 @@ MCRR_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
         mcrr_inst* const inst_cream = (mcrr_inst*)inst_base->component;
 
-        LOG_ERROR(Core_ARM11, "MCRR executed | Coprocessor: %u, CRm %u, opc1: %u, Rt: %u, Rt2: %u",
+        LOG_ERROR(Core_ARM11, "MCRR executed | Coprocessor: {}, CRm {}, opc1: {}, Rt: {}, Rt2: {}",
                   inst_cream->cp_num, inst_cream->crm, inst_cream->opcode_1, inst_cream->rt,
                   inst_cream->rt2);
     }
@@ -2404,7 +2404,7 @@ MOV_INST : {
 
         RD = SHIFTER_OPERAND;
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -2451,7 +2451,7 @@ MRRC_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
         mcrr_inst* const inst_cream = (mcrr_inst*)inst_base->component;
 
-        LOG_ERROR(Core_ARM11, "MRRC executed | Coprocessor: %u, CRm %u, opc1: %u, Rt: %u, Rt2: %u",
+        LOG_ERROR(Core_ARM11, "MRRC executed | Coprocessor: {}, CRm {}, opc1: {}, Rt: {}, Rt2: {}",
                   inst_cream->cp_num, inst_cream->crm, inst_cream->opcode_1, inst_cream->rt,
                   inst_cream->rt2);
     }
@@ -2510,7 +2510,7 @@ MSR_INST : {
             cpu->ChangePrivilegeMode(cpu->Cpsr & 0x1F);
             LOAD_NZCVT;
         } else {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 mask = byte_mask & (UserMask | PrivMask | StateMask);
                 cpu->Spsr_copy = (cpu->Spsr_copy & ~mask) | (operand & mask);
             }
@@ -2545,7 +2545,7 @@ MVN_INST : {
         RD = ~SHIFTER_OPERAND;
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -2578,7 +2578,7 @@ ORR_INST : {
         RD = lop | rop;
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -2832,7 +2832,7 @@ RSB_INST : {
         RD = AddWithCarry(~rn_val, SHIFTER_OPERAND, 1, &carry, &overflow);
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -2866,7 +2866,7 @@ RSC_INST : {
         RD = AddWithCarry(~rn_val, SHIFTER_OPERAND, cpu->CFlag, &carry, &overflow);
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -3008,7 +3008,7 @@ SBC_INST : {
         RD = AddWithCarry(rn_val, ~SHIFTER_OPERAND, cpu->CFlag, &carry, &overflow);
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -3078,7 +3078,7 @@ SETEND_INST : {
     else
         cpu->Cpsr &= ~(1 << 9);
 
-    LOG_WARNING(Core_ARM11, "SETEND %s executed", big_endian ? "BE" : "LE");
+    LOG_WARNING(Core_ARM11, "SETEND {} executed", big_endian ? "BE" : "LE");
 
     cpu->Reg[15] += cpu->GetInstructionSize();
     INC_PC(sizeof(setend_inst));
@@ -3835,7 +3835,7 @@ SUB_INST : {
         RD = AddWithCarry(rn_val, ~SHIFTER_OPERAND, 1, &carry, &overflow);
 
         if (inst_cream->S && (inst_cream->Rd == 15)) {
-            if (CurrentModeHasSPSR) {
+            if (cpu->CurrentModeHasSPSR()) {
                 cpu->Cpsr = cpu->Spsr_copy;
                 cpu->ChangePrivilegeMode(cpu->Spsr_copy & 0x1F);
                 LOAD_NZCVT;
@@ -3859,7 +3859,13 @@ SUB_INST : {
 SWI_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
         swi_inst* const inst_cream = (swi_inst*)inst_base->component;
-        SVC::CallSVC(inst_cream->num & 0xFFFF);
+        CoreTiming::AddTicks(num_instrs);
+        cpu->NumInstrsToExecute =
+            num_instrs >= cpu->NumInstrsToExecute ? 0 : cpu->NumInstrsToExecute - num_instrs;
+        num_instrs = 0;
+        Kernel::CallSVC(inst_cream->num & 0xFFFF);
+        // The kernel would call ERET to get here, which clears exclusive memory state.
+        cpu->UnsetExclusiveMemoryAddress();
     }
 
     cpu->Reg[15] += cpu->GetInstructionSize();

@@ -1,17 +1,13 @@
 #include <QApplication>
 #include <QHBoxLayout>
 #include <QKeyEvent>
-
-#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
-// Required for screen DPI information
 #include <QScreen>
 #include <QWindow>
-#endif
+#include <fmt/format.h>
 
 #include "citra_qt/bootmanager.h"
 #include "common/microprofile.h"
 #include "common/scm_rev.h"
-#include "common/string_util.h"
 #include "core/3ds.h"
 #include "core/core.h"
 #include "core/settings.h"
@@ -20,8 +16,7 @@
 #include "input_common/motion_emu.h"
 #include "network/network.h"
 
-EmuThread::EmuThread(GRenderWindow* render_window)
-    : exec_step(false), running(false), stop_run(false), render_window(render_window) {}
+EmuThread::EmuThread(GRenderWindow* render_window) : render_window(render_window) {}
 
 void EmuThread::run() {
     render_window->MakeCurrent();
@@ -40,7 +35,14 @@ void EmuThread::run() {
                 emit DebugModeLeft();
 
             Core::System::ResultStatus result = Core::System::GetInstance().RunLoop();
+            if (result == Core::System::ResultStatus::ShutdownRequested) {
+                // Notify frontend we shutdown
+                emit ErrorThrown(result, "");
+                // End emulation execution
+                break;
+            }
             if (result != Core::System::ResultStatus::Success) {
+                this->SetRunning(false);
                 emit ErrorThrown(result, Core::System::GetInstance().GetStatusDetails());
             }
 
@@ -107,40 +109,37 @@ private:
 GRenderWindow::GRenderWindow(QWidget* parent, EmuThread* emu_thread)
     : QWidget(parent), child(nullptr), emu_thread(emu_thread) {
 
-    std::string window_title = Common::StringFromFormat("Citra %s| %s-%s", Common::g_build_name,
-                                                        Common::g_scm_branch, Common::g_scm_desc);
+    std::string window_title = fmt::format("Citra {} | {}-{}", Common::g_build_name,
+                                           Common::g_scm_branch, Common::g_scm_desc);
     setWindowTitle(QString::fromStdString(window_title));
 
     InputCommon::Init();
-    Network::Init();
 }
 
 GRenderWindow::~GRenderWindow() {
     InputCommon::Shutdown();
-    Network::Shutdown();
 }
 
 void GRenderWindow::moveContext() {
     DoneCurrent();
-// We need to move GL context to the swapping thread in Qt5
-#if QT_VERSION > QT_VERSION_CHECK(5, 0, 0)
+
     // If the thread started running, move the GL Context to the new thread. Otherwise, move it
     // back.
     auto thread = (QThread::currentThread() == qApp->thread() && emu_thread != nullptr)
                       ? emu_thread
                       : qApp->thread();
     child->context()->moveToThread(thread);
-#endif
 }
 
 void GRenderWindow::SwapBuffers() {
-#if !defined(QT_NO_DEBUG)
-    // Qt debug runtime prints a bogus warning on the console if you haven't called makeCurrent
-    // since the last time you called swapBuffers. This presumably means something if you're using
-    // QGLWidget the "regular" way, but in our multi-threaded use case is harmless since we never
-    // call doneCurrent in this thread.
+    // In our multi-threaded QGLWidget use case we shouldn't need to call `makeCurrent`,
+    // since we never call `doneCurrent` in this thread.
+    // However:
+    // - The Qt debug runtime prints a bogus warning on the console if `makeCurrent` wasn't called
+    // since the last time `swapBuffers` was executed;
+    // - On macOS, if `makeCurrent` isn't called explicitely, resizing the buffer breaks.
     child->makeCurrent();
-#endif
+
     child->swapBuffers();
 }
 
@@ -193,12 +192,8 @@ QByteArray GRenderWindow::saveGeometry() {
 }
 
 qreal GRenderWindow::windowPixelRatio() {
-#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
     // windowHandle() might not be accessible until the window is displayed to screen.
     return windowHandle() ? windowHandle()->screen()->devicePixelRatio() : 1.0f;
-#else
-    return 1.0f;
-#endif
 }
 
 void GRenderWindow::closeEvent(QCloseEvent* event) {
@@ -302,9 +297,7 @@ void GRenderWindow::OnEmulationStopping() {
 void GRenderWindow::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
     // windowHandle() is not initialized until the Window is shown, so we connect it here.
-    connect(this->windowHandle(), SIGNAL(screenChanged(QScreen*)), this,
-            SLOT(OnFramebufferSizeChanged()), Qt::UniqueConnection);
-#endif
+    connect(windowHandle(), &QWindow::screenChanged, this, &GRenderWindow::OnFramebufferSizeChanged,
+            Qt::UniqueConnection);
 }

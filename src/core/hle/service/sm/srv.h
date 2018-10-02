@@ -4,16 +4,16 @@
 
 #pragma once
 
+#include <unordered_map>
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/service/service.h"
 
 namespace Kernel {
 class HLERequestContext;
 class Semaphore;
-}
+} // namespace Kernel
 
-namespace Service {
-namespace SM {
+namespace Service::SM {
 
 /// Interface to "srv:" service
 class SRV final : public ServiceFramework<SRV> {
@@ -32,7 +32,8 @@ private:
 
     std::shared_ptr<ServiceManager> service_manager;
     Kernel::SharedPtr<Kernel::Semaphore> notification_semaphore;
+    std::unordered_map<std::string, Kernel::SharedPtr<Kernel::Event>>
+        get_service_handle_delayed_map;
 };
 
-} // namespace SM
-} // namespace Service
+} // namespace Service::SM

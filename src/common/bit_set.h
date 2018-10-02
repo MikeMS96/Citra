@@ -96,7 +96,7 @@ static inline int LeastSignificantSetBit(u64 val) {
 
 template <typename IntTy>
 class BitSet {
-    static_assert(!std::is_signed<IntTy>::value, "BitSet should not be used with signed types");
+    static_assert(!std::is_signed_v<IntTy>, "BitSet should not be used with signed types");
 
 public:
     // A reference to a particular bit, returned from operator[].
@@ -120,20 +120,15 @@ public:
     // A STL-like iterator is required to be able to use range-based for loops.
     class Iterator {
     public:
-        Iterator(const Iterator& other) : m_val(other.m_val), m_bit(other.m_bit) {}
-        Iterator(IntTy val) : m_val(val), m_bit(0) {}
-        Iterator& operator=(Iterator other) {
-            new (this) Iterator(other);
-            return *this;
-        }
+        Iterator(const Iterator& other) : m_val(other.m_val) {}
+        Iterator(IntTy val) : m_val(val) {}
         int operator*() {
-            return m_bit + ComputeLsb();
+            // This will never be called when m_val == 0, because that would be the end() iterator
+            return LeastSignificantSetBit(m_val);
         }
         Iterator& operator++() {
-            int lsb = ComputeLsb();
-            m_val >>= lsb + 1;
-            m_bit += lsb + 1;
-            m_has_lsb = false;
+            // Unset least significant set bit
+            m_val &= m_val - IntTy(1);
             return *this;
         }
         Iterator operator++(int _) {
@@ -149,17 +144,7 @@ public:
         }
 
     private:
-        int ComputeLsb() {
-            if (!m_has_lsb) {
-                m_lsb = LeastSignificantSetBit(m_val);
-                m_has_lsb = true;
-            }
-            return m_lsb;
-        }
         IntTy m_val;
-        int m_bit;
-        int m_lsb = -1;
-        bool m_has_lsb = false;
     };
 
     BitSet() : m_val(0) {}
@@ -170,14 +155,14 @@ public:
             m_val |= (IntTy)1 << bit;
     }
 
-    static BitSet AllTrue(size_t count) {
+    static BitSet AllTrue(std::size_t count) {
         return BitSet(count == sizeof(IntTy) * 8 ? ~(IntTy)0 : (((IntTy)1 << count) - 1));
     }
 
-    Ref operator[](size_t bit) {
+    Ref operator[](std::size_t bit) {
         return Ref(this, (IntTy)1 << bit);
     }
-    const Ref operator[](size_t bit) const {
+    const Ref operator[](std::size_t bit) const {
         return (*const_cast<BitSet*>(this))[bit];
     }
     bool operator==(BitSet other) const {
@@ -236,7 +221,7 @@ public:
     IntTy m_val;
 };
 
-} // Common
+} // namespace Common
 
 typedef Common::BitSet<u8> BitSet8;
 typedef Common::BitSet<u16> BitSet16;

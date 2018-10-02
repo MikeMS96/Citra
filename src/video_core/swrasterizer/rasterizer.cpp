@@ -11,7 +11,6 @@
 #include "common/color.h"
 #include "common/common_types.h"
 #include "common/logging/log.h"
-#include "common/math_util.h"
 #include "common/microprofile.h"
 #include "common/quaternion.h"
 #include "common/vector_math.h"
@@ -74,8 +73,9 @@ static int SignedArea(const Math::Vec2<Fix12P4>& vtx1, const Math::Vec2<Fix12P4>
 };
 
 /// Convert a 3D vector for cube map coordinates to 2D texture coordinates along with the face name
-static std::tuple<float24, float24, PAddr> ConvertCubeCoord(float24 u, float24 v, float24 w,
-                                                            const TexturingRegs& regs) {
+static std::tuple<float24, float24, float24, PAddr> ConvertCubeCoord(float24 u, float24 v,
+                                                                     float24 w,
+                                                                     const TexturingRegs& regs) {
     const float abs_u = std::abs(u.ToFloat32());
     const float abs_v = std::abs(v.ToFloat32());
     const float abs_w = std::abs(w.ToFloat32());
@@ -112,8 +112,9 @@ static std::tuple<float24, float24, PAddr> ConvertCubeCoord(float24 u, float24 v
         x = u;
         z = w;
     }
+    float24 z_abs = float24::FromFloat32(std::abs(z.ToFloat32()));
     const float24 half = float24::FromFloat32(0.5f);
-    return std::make_tuple(x / z * half + half, y / z * half + half, addr);
+    return std::make_tuple(x / z * half + half, y / z * half + half, z_abs, addr);
 }
 
 MICROPROFILE_DEFINE(GPU_Rasterization, "GPU", "Rasterization", MP_RGB(50, 50, 240));
@@ -197,9 +198,9 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
         } else {
             // check if vertex is on our left => right side
             // TODO: Not sure how likely this is to overflow
-            return (int)vtx.x < (int)line1.x +
-                                    ((int)line2.x - (int)line1.x) * ((int)vtx.y - (int)line1.y) /
-                                        ((int)line2.y - (int)line1.y);
+            return (int)vtx.x < (int)line1.x + ((int)line2.x - (int)line1.x) *
+                                                   ((int)vtx.y - (int)line1.y) /
+                                                   ((int)line2.y - (int)line1.y);
         }
     };
     int bias0 =
@@ -269,7 +270,7 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
             }
 
             // Clamp the result
-            depth = MathUtil::Clamp(depth, 0.0f, 1.0f);
+            depth = std::clamp(depth, 0.0f, 1.0f);
 
             // Perspective correct attribute interpolation:
             // Attribute values cannot be calculated by simple linear interpolation since
@@ -293,18 +294,18 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
             };
 
             Math::Vec4<u8> primary_color{
-                (u8)(
+                static_cast<u8>(round(
                     GetInterpolatedAttribute(v0.color.r(), v1.color.r(), v2.color.r()).ToFloat32() *
-                    255),
-                (u8)(
+                    255)),
+                static_cast<u8>(round(
                     GetInterpolatedAttribute(v0.color.g(), v1.color.g(), v2.color.g()).ToFloat32() *
-                    255),
-                (u8)(
+                    255)),
+                static_cast<u8>(round(
                     GetInterpolatedAttribute(v0.color.b(), v1.color.b(), v2.color.b()).ToFloat32() *
-                    255),
-                (u8)(
+                    255)),
+                static_cast<u8>(round(
                     GetInterpolatedAttribute(v0.color.a(), v1.color.a(), v2.color.a()).ToFloat32() *
-                    255),
+                    255)),
             };
 
             Math::Vec2<float24> uv[3];
@@ -331,13 +332,16 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
                 // Only unit 0 respects the texturing type (according to 3DBrew)
                 // TODO: Refactor so cubemaps and shadowmaps can be handled
                 PAddr texture_address = texture.config.GetPhysicalAddress();
+                float24 shadow_z;
                 if (i == 0) {
                     switch (texture.config.type) {
                     case TexturingRegs::TextureConfig::Texture2D:
                         break;
+                    case TexturingRegs::TextureConfig::ShadowCube:
                     case TexturingRegs::TextureConfig::TextureCube: {
                         auto w = GetInterpolatedAttribute(v0.tc0_w, v1.tc0_w, v2.tc0_w);
-                        std::tie(u, v, texture_address) = ConvertCubeCoord(u, v, w, regs.texturing);
+                        std::tie(u, v, shadow_z, texture_address) =
+                            ConvertCubeCoord(u, v, w, regs.texturing);
                         break;
                     }
                     case TexturingRegs::TextureConfig::Projection2D: {
@@ -346,9 +350,20 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
                         v /= tc0_w;
                         break;
                     }
+                    case TexturingRegs::TextureConfig::Shadow2D: {
+                        auto tc0_w = GetInterpolatedAttribute(v0.tc0_w, v1.tc0_w, v2.tc0_w);
+                        if (!regs.texturing.shadow.orthographic) {
+                            u /= tc0_w;
+                            v /= tc0_w;
+                        }
+
+                        shadow_z = float24::FromFloat32(std::abs(tc0_w.ToFloat32()));
+                        break;
+                    }
+                    case TexturingRegs::TextureConfig::Disabled:
+                        continue; // skip this unit and continue to the next unit
                     default:
-                        // TODO: Change to LOG_ERROR when more types are handled.
-                        LOG_DEBUG(HW_GPU, "Unhandled texture type %x", (int)texture.config.type);
+                        LOG_ERROR(HW_GPU, "Unhandled texture type {:x}", (int)texture.config.type);
                         UNIMPLEMENTED();
                         break;
                     }
@@ -393,9 +408,22 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
 
                     // TODO: Apply the min and mag filters to the texture
                     texture_color[i] = Texture::LookupTexture(texture_data, s, t, info);
-#if PICA_DUMP_TEXTURES
-                    DebugUtils::DumpTexture(texture.config, texture_data);
-#endif
+                }
+
+                if (i == 0 && (texture.config.type == TexturingRegs::TextureConfig::Shadow2D ||
+                               texture.config.type == TexturingRegs::TextureConfig::ShadowCube)) {
+
+                    s32 z_int = static_cast<s32>(std::min(shadow_z.ToFloat32(), 1.0f) * 0xFFFFFF);
+                    z_int -= regs.texturing.shadow.bias << 1;
+                    auto& color = texture_color[i];
+                    s32 z_ref = (color.w << 16) | (color.z << 8) | color.y;
+                    u8 density;
+                    if (z_ref >= z_int) {
+                        density = color.x;
+                    } else {
+                        density = 0;
+                    }
+                    texture_color[i] = {density, density, density, density};
                 }
             }
 
@@ -426,12 +454,14 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
             Math::Vec4<u8> secondary_fragment_color = {0, 0, 0, 0};
 
             if (!g_state.regs.lighting.disable) {
-                Math::Quaternion<float> normquat = Math::Quaternion<float>{
-                    {GetInterpolatedAttribute(v0.quat.x, v1.quat.x, v2.quat.x).ToFloat32(),
-                     GetInterpolatedAttribute(v0.quat.y, v1.quat.y, v2.quat.y).ToFloat32(),
-                     GetInterpolatedAttribute(v0.quat.z, v1.quat.z, v2.quat.z).ToFloat32()},
-                    GetInterpolatedAttribute(v0.quat.w, v1.quat.w, v2.quat.w).ToFloat32(),
-                }.Normalized();
+                Math::Quaternion<float> normquat =
+                    Math::Quaternion<float>{
+                        {GetInterpolatedAttribute(v0.quat.x, v1.quat.x, v2.quat.x).ToFloat32(),
+                         GetInterpolatedAttribute(v0.quat.y, v1.quat.y, v2.quat.y).ToFloat32(),
+                         GetInterpolatedAttribute(v0.quat.z, v1.quat.z, v2.quat.z).ToFloat32()},
+                        GetInterpolatedAttribute(v0.quat.w, v1.quat.w, v2.quat.w).ToFloat32(),
+                    }
+                        .Normalized();
 
                 Math::Vec3<float> view{
                     GetInterpolatedAttribute(v0.view.x, v1.view.x, v2.view.x).ToFloat32(),
@@ -482,7 +512,7 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
                         return combiner_output;
 
                     default:
-                        LOG_ERROR(HW_GPU, "Unknown color combiner source %d", (int)source);
+                        LOG_ERROR(HW_GPU, "Unknown color combiner source {}", (int)source);
                         UNIMPLEMENTED();
                         return {0, 0, 0, 0};
                     }
@@ -542,6 +572,17 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
             }
 
             const auto& output_merger = regs.framebuffer.output_merger;
+
+            if (output_merger.fragment_operation_mode ==
+                FramebufferRegs::FragmentOperationMode::Shadow) {
+                u32 depth_int = static_cast<u32>(depth * 0xFFFFFF);
+                // use green color as the shadow intensity
+                u8 stencil = combiner_output.y;
+                DrawShadowMapPixel(x >> 4, y >> 4, depth_int, stencil);
+                // skip the normal output merger pipeline if it is in shadow mode
+                continue;
+            }
+
             // TODO: Does alpha testing happen before or after stencil?
             if (output_merger.alpha_test.enable) {
                 bool pass = false;
@@ -603,11 +644,11 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
                 }
 
                 // Generate clamped fog factor from LUT for given fog index
-                float fog_i = MathUtil::Clamp(floorf(fog_index), 0.0f, 127.0f);
+                float fog_i = std::clamp(floorf(fog_index), 0.0f, 127.0f);
                 float fog_f = fog_index - fog_i;
                 const auto& fog_lut_entry = g_state.fog.lut[static_cast<unsigned int>(fog_i)];
                 float fog_factor = fog_lut_entry.ToFloat() + fog_lut_entry.DiffToFloat() * fog_f;
-                fog_factor = MathUtil::Clamp(fog_factor, 0.0f, 1.0f);
+                fog_factor = std::clamp(fog_factor, 0.0f, 1.0f);
 
                 // Blend the fog
                 for (unsigned i = 0; i < 3; i++) {
@@ -623,8 +664,9 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
                 u8 new_stencil =
                     PerformStencilAction(action, old_stencil, stencil_test.reference_value);
                 if (g_state.regs.framebuffer.framebuffer.allow_depth_stencil_write != 0)
-                    SetStencil(x >> 4, y >> 4, (new_stencil & stencil_test.write_mask) |
-                                                   (old_stencil & ~stencil_test.write_mask));
+                    SetStencil(x >> 4, y >> 4,
+                               (new_stencil & stencil_test.write_mask) |
+                                   (old_stencil & ~stencil_test.write_mask));
             };
 
             if (stencil_action_enable) {
@@ -801,7 +843,7 @@ static void ProcessTriangleInternal(const Vertex& v0, const Vertex& v1, const Ve
                         return std::min(combiner_output.a(), static_cast<u8>(255 - dest.a()));
 
                     default:
-                        LOG_CRITICAL(HW_GPU, "Unknown blend factor %x", static_cast<u32>(factor));
+                        LOG_CRITICAL(HW_GPU, "Unknown blend factor {:x}", static_cast<u32>(factor));
                         UNIMPLEMENTED();
                         break;
                     }

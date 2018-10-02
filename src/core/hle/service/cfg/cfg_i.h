@@ -4,19 +4,13 @@
 
 #pragma once
 
-#include "core/hle/service/service.h"
+#include "core/hle/service/cfg/cfg.h"
 
-namespace Service {
-namespace CFG {
+namespace Service::CFG {
 
-class CFG_I final : public Interface {
+class CFG_I final : public Module::Interface {
 public:
-    CFG_I();
-
-    std::string GetPortName() const override {
-        return "cfg:i";
-    }
+    explicit CFG_I(std::shared_ptr<Module> cfg);
 };
 
-} // namespace CFG
-} // namespace Service
+} // namespace Service::CFG

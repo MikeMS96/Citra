@@ -4,23 +4,22 @@
 
 #include "core/hle/service/nim/nim_aoc.h"
 
-namespace Service {
-namespace NIM {
+namespace Service::NIM {
 
-const Interface::FunctionInfo FunctionTable[] = {
-    {0x00030042, nullptr, "SetApplicationId"},
-    {0x00040042, nullptr, "SetTin"},
-    {0x000902D0, nullptr, "ListContentSetsEx"},
-    {0x00180000, nullptr, "GetBalance"},
-    {0x001D0000, nullptr, "GetCustomerSupportCode"},
-    {0x00210000, nullptr, "Initialize"},
-    {0x00240282, nullptr, "CalculateContentsRequiredSize"},
-    {0x00250000, nullptr, "RefreshServerTime"},
-};
-
-NIM_AOC_Interface::NIM_AOC_Interface() {
-    Register(FunctionTable);
+NIM_AOC::NIM_AOC() : ServiceFramework("nim:aoc", 2) {
+    const FunctionInfo functions[] = {
+        {0x00030042, nullptr, "SetApplicationId"},
+        {0x00040042, nullptr, "SetTin"},
+        {0x000902D0, nullptr, "ListContentSetsEx"},
+        {0x00180000, nullptr, "GetBalance"},
+        {0x001D0000, nullptr, "GetCustomerSupportCode"},
+        {0x00210000, nullptr, "Initialize"},
+        {0x00240282, nullptr, "CalculateContentsRequiredSize"},
+        {0x00250000, nullptr, "RefreshServerTime"},
+    };
+    RegisterHandlers(functions);
 }
 
-} // namespace NIM
-} // namespace Service
+NIM_AOC::~NIM_AOC() = default;
+
+} // namespace Service::NIM

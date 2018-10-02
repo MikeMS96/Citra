@@ -4,10 +4,12 @@
 
 #pragma once
 
-#include <vector>
+#include <functional>
 #include "common/common_types.h"
 
 namespace AudioCore {
+
+constexpr char auto_device_name[] = "auto";
 
 /**
  * This class is an interface for an audio sink. An audio sink accepts samples in stereo signed
@@ -18,28 +20,16 @@ class Sink {
 public:
     virtual ~Sink() = default;
 
-    /// The native rate of this sink. The sink expects to be fed samples that respect this. (Units:
-    /// samples/sec)
+    /// The native rate of this sink. The sink expects to be fed samples that respect this.
+    /// (Units: samples/sec)
     virtual unsigned int GetNativeSampleRate() const = 0;
 
     /**
-     * Feed stereo samples to sink.
+     * Set callback for samples
      * @param samples Samples in interleaved stereo PCM16 format.
      * @param sample_count Number of samples.
      */
-    virtual void EnqueueSamples(const s16* samples, size_t sample_count) = 0;
-
-    /// Samples enqueued that have not been played yet.
-    virtual std::size_t SamplesInQueue() const = 0;
-
-    /**
-     * Sets the desired output device.
-     * @param device_id ID of the desired device.
-     */
-    virtual void SetDevice(int device_id) = 0;
-
-    /// Returns the list of available devices.
-    virtual std::vector<std::string> GetDeviceList() const = 0;
+    virtual void SetCallback(std::function<void(s16*, std::size_t)> cb) = 0;
 };
 
-} // namespace
+} // namespace AudioCore

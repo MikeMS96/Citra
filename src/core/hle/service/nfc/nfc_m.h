@@ -4,19 +4,13 @@
 
 #pragma once
 
-#include "core/hle/service/service.h"
+#include "core/hle/service/nfc/nfc.h"
 
-namespace Service {
-namespace NFC {
+namespace Service::NFC {
 
-class NFC_M final : public Interface {
+class NFC_M final : public Module::Interface {
 public:
-    NFC_M();
-
-    std::string GetPortName() const override {
-        return "nfc:m";
-    }
+    explicit NFC_M(std::shared_ptr<Module> nfc);
 };
 
-} // namespace NFC
-} // namespace Service
+} // namespace Service::NFC

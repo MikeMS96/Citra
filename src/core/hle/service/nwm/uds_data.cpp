@@ -15,8 +15,7 @@
 #include "core/hle/service/nwm/uds_data.h"
 #include "core/hw/aes/key.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
 using MacAddress = std::array<u8, 6>;
 
@@ -187,8 +186,9 @@ static std::vector<u8> DecryptDataFrame(const std::vector<u8>& encrypted_payload
         d.SpecifyDataLengths(aad.size(), encrypted_payload.size() - 8, 0);
 
         CryptoPP::AuthenticatedDecryptionFilter df(
-            d, nullptr, CryptoPP::AuthenticatedDecryptionFilter::MAC_AT_END |
-                            CryptoPP::AuthenticatedDecryptionFilter::THROW_EXCEPTION);
+            d, nullptr,
+            CryptoPP::AuthenticatedDecryptionFilter::MAC_AT_END |
+                CryptoPP::AuthenticatedDecryptionFilter::THROW_EXCEPTION);
         // put aad
         df.ChannelPut(CryptoPP::AAD_CHANNEL, aad.data(), aad.size());
 
@@ -202,7 +202,7 @@ static std::vector<u8> DecryptDataFrame(const std::vector<u8>& encrypted_payload
         df.ChannelMessageEnd(CryptoPP::DEFAULT_CHANNEL);
         df.SetRetrievalChannel(CryptoPP::DEFAULT_CHANNEL);
 
-        size_t size = df.MaxRetrievable();
+        std::size_t size = df.MaxRetrievable();
 
         std::vector<u8> pdata(size);
         df.Get(pdata.data(), size);
@@ -256,7 +256,7 @@ static std::vector<u8> EncryptDataFrame(const std::vector<u8>& payload,
 
         df.SetRetrievalChannel(CryptoPP::DEFAULT_CHANNEL);
 
-        size_t size = df.MaxRetrievable();
+        std::size_t size = df.MaxRetrievable();
 
         std::vector<u8> cipher(size);
         df.Get(cipher.data(), size);
@@ -356,7 +356,7 @@ std::vector<u8> GenerateEAPoLLogoffFrame(const MacAddress& mac_address, u16 netw
     eapol_logoff.connected_nodes = total_nodes;
     eapol_logoff.max_nodes = max_nodes;
 
-    for (size_t index = 0; index < total_nodes; ++index) {
+    for (std::size_t index = 0; index < total_nodes; ++index) {
         const auto& node_info = nodes[index];
         auto& node = eapol_logoff.nodes[index];
 
@@ -382,5 +382,4 @@ EAPoLLogoffPacket ParseEAPoLLogoffFrame(const std::vector<u8>& frame) {
     return eapol_logoff;
 }
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

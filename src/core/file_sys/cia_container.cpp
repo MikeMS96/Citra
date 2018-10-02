@@ -22,7 +22,7 @@ Loader::ResultStatus CIAContainer::Load(const FileBackend& backend) {
     std::vector<u8> header_data(sizeof(Header));
 
     // Load the CIA Header
-    ResultVal<size_t> read_result = backend.Read(0, sizeof(Header), header_data.data());
+    ResultVal<std::size_t> read_result = backend.Read(0, sizeof(Header), header_data.data());
     if (read_result.Failed() || *read_result != sizeof(Header))
         return Loader::ResultStatus::Error;
 
@@ -114,7 +114,8 @@ Loader::ResultStatus CIAContainer::Load(const std::vector<u8>& file_data) {
     return Loader::ResultStatus::Success;
 }
 
-Loader::ResultStatus CIAContainer::LoadHeader(const std::vector<u8>& header_data, size_t offset) {
+Loader::ResultStatus CIAContainer::LoadHeader(const std::vector<u8>& header_data,
+                                              std::size_t offset) {
     if (header_data.size() - offset < sizeof(Header))
         return Loader::ResultStatus::Error;
 
@@ -123,18 +124,28 @@ Loader::ResultStatus CIAContainer::LoadHeader(const std::vector<u8>& header_data
     return Loader::ResultStatus::Success;
 }
 
+Loader::ResultStatus CIAContainer::LoadTicket(const std::vector<u8>& ticket_data,
+                                              std::size_t offset) {
+    return cia_ticket.Load(ticket_data, offset);
+}
+
 Loader::ResultStatus CIAContainer::LoadTitleMetadata(const std::vector<u8>& tmd_data,
-                                                     size_t offset) {
+                                                     std::size_t offset) {
     return cia_tmd.Load(tmd_data, offset);
 }
 
-Loader::ResultStatus CIAContainer::LoadMetadata(const std::vector<u8>& meta_data, size_t offset) {
+Loader::ResultStatus CIAContainer::LoadMetadata(const std::vector<u8>& meta_data,
+                                                std::size_t offset) {
     if (meta_data.size() - offset < sizeof(Metadata))
         return Loader::ResultStatus::Error;
 
     std::memcpy(&cia_metadata, meta_data.data(), sizeof(Metadata));
 
     return Loader::ResultStatus::Success;
+}
+
+const Ticket& CIAContainer::GetTicket() const {
+    return cia_ticket;
 }
 
 const TitleMetadata& CIAContainer::GetTitleMetadata() const {
@@ -208,21 +219,21 @@ u64 CIAContainer::GetContentSize(u16 index) const {
 }
 
 void CIAContainer::Print() const {
-    LOG_DEBUG(Service_FS, "Type:               %u", static_cast<u32>(cia_header.type));
-    LOG_DEBUG(Service_FS, "Version:            %u\n", static_cast<u32>(cia_header.version));
+    LOG_DEBUG(Service_FS, "Type:               {}", static_cast<u32>(cia_header.type));
+    LOG_DEBUG(Service_FS, "Version:            {}\n", static_cast<u32>(cia_header.version));
 
-    LOG_DEBUG(Service_FS, "Certificate Size: 0x%08x bytes", GetCertificateSize());
-    LOG_DEBUG(Service_FS, "Ticket Size:      0x%08x bytes", GetTicketSize());
-    LOG_DEBUG(Service_FS, "TMD Size:         0x%08x bytes", GetTitleMetadataSize());
-    LOG_DEBUG(Service_FS, "Meta Size:        0x%08x bytes", GetMetadataSize());
-    LOG_DEBUG(Service_FS, "Content Size:     0x%08" PRIx64 " bytes\n", GetTotalContentSize());
+    LOG_DEBUG(Service_FS, "Certificate Size: 0x{:08x} bytes", GetCertificateSize());
+    LOG_DEBUG(Service_FS, "Ticket Size:      0x{:08x} bytes", GetTicketSize());
+    LOG_DEBUG(Service_FS, "TMD Size:         0x{:08x} bytes", GetTitleMetadataSize());
+    LOG_DEBUG(Service_FS, "Meta Size:        0x{:08x} bytes", GetMetadataSize());
+    LOG_DEBUG(Service_FS, "Content Size:     0x{:08x} bytes\n", GetTotalContentSize());
 
-    LOG_DEBUG(Service_FS, "Certificate Offset: 0x%08" PRIx64 " bytes", GetCertificateOffset());
-    LOG_DEBUG(Service_FS, "Ticket Offset:      0x%08" PRIx64 " bytes", GetTicketOffset());
-    LOG_DEBUG(Service_FS, "TMD Offset:         0x%08" PRIx64 " bytes", GetTitleMetadataOffset());
-    LOG_DEBUG(Service_FS, "Meta Offset:        0x%08" PRIx64 " bytes", GetMetadataOffset());
+    LOG_DEBUG(Service_FS, "Certificate Offset: 0x{:08x} bytes", GetCertificateOffset());
+    LOG_DEBUG(Service_FS, "Ticket Offset:      0x{:08x} bytes", GetTicketOffset());
+    LOG_DEBUG(Service_FS, "TMD Offset:         0x{:08x} bytes", GetTitleMetadataOffset());
+    LOG_DEBUG(Service_FS, "Meta Offset:        0x{:08x} bytes", GetMetadataOffset());
     for (u16 i = 0; i < cia_tmd.GetContentCount(); i++) {
-        LOG_DEBUG(Service_FS, "Content %x Offset:   0x%08" PRIx64 " bytes", i, GetContentOffset(i));
+        LOG_DEBUG(Service_FS, "Content {:x} Offset:   0x{:08x} bytes", i, GetContentOffset(i));
     }
 }
-}
+} // namespace FileSys

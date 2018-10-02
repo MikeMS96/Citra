@@ -7,16 +7,17 @@
 #include <string>
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
+#include <fmt/format.h>
 #include <glad/glad.h>
 #include "citra/emu_window/emu_window_sdl2.h"
 #include "common/logging/log.h"
 #include "common/scm_rev.h"
-#include "common/string_util.h"
 #include "core/3ds.h"
 #include "core/settings.h"
 #include "input_common/keyboard.h"
 #include "input_common/main.h"
 #include "input_common/motion_emu.h"
+#include "input_common/sdl/sdl.h"
 #include "network/network.h"
 
 void EmuWindow_SDL2::OnMouseMotion(s32 x, s32 y) {
@@ -58,17 +59,38 @@ void EmuWindow_SDL2::OnResize() {
     UpdateCurrentFramebufferLayout(width, height);
 }
 
-EmuWindow_SDL2::EmuWindow_SDL2() {
+void EmuWindow_SDL2::Fullscreen() {
+    if (SDL_SetWindowFullscreen(render_window, SDL_WINDOW_FULLSCREEN) == 0) {
+        return;
+    }
+
+    LOG_ERROR(Frontend, "Fullscreening failed: {}", SDL_GetError());
+
+    // Try a different fullscreening method
+    LOG_INFO(Frontend, "Attempting to use borderless fullscreen...");
+    if (SDL_SetWindowFullscreen(render_window, SDL_WINDOW_FULLSCREEN_DESKTOP) == 0) {
+        return;
+    }
+
+    LOG_ERROR(Frontend, "Borderless fullscreening failed: {}", SDL_GetError());
+
+    // Fallback algorithm: Maximise window.
+    // Works on all systems (unless something is seriously wrong), so no fallback for this one.
+    LOG_INFO(Frontend, "Falling back on a maximised window...");
+    SDL_MaximizeWindow(render_window);
+}
+
+EmuWindow_SDL2::EmuWindow_SDL2(bool fullscreen) {
+    // Initialize the window
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
+        LOG_CRITICAL(Frontend, "Failed to initialize SDL2! Exiting...");
+        exit(1);
+    }
+
     InputCommon::Init();
     Network::Init();
 
     SDL_SetMainReady();
-
-    // Initialize the window
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        LOG_CRITICAL(Frontend, "Failed to initialize SDL2! Exiting...");
-        exit(1);
-    }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -79,8 +101,8 @@ EmuWindow_SDL2::EmuWindow_SDL2() {
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
 
-    std::string window_title = Common::StringFromFormat("Citra %s| %s-%s ", Common::g_build_name,
-                                                        Common::g_scm_branch, Common::g_scm_desc);
+    std::string window_title = fmt::format("Citra {} | {}-{}", Common::g_build_fullname,
+                                           Common::g_scm_branch, Common::g_scm_desc);
     render_window =
         SDL_CreateWindow(window_title.c_str(),
                          SDL_WINDOWPOS_UNDEFINED, // x position
@@ -89,19 +111,23 @@ EmuWindow_SDL2::EmuWindow_SDL2() {
                          SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 
     if (render_window == nullptr) {
-        LOG_CRITICAL(Frontend, "Failed to create SDL2 window! Exiting...");
+        LOG_CRITICAL(Frontend, "Failed to create SDL2 window: {}", SDL_GetError());
         exit(1);
+    }
+
+    if (fullscreen) {
+        Fullscreen();
     }
 
     gl_context = SDL_GL_CreateContext(render_window);
 
     if (gl_context == nullptr) {
-        LOG_CRITICAL(Frontend, "Failed to create SDL2 GL context! Exiting...");
+        LOG_CRITICAL(Frontend, "Failed to create SDL2 GL context: {}", SDL_GetError());
         exit(1);
     }
 
     if (!gladLoadGLLoader(static_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
-        LOG_CRITICAL(Frontend, "Failed to initialize GL functions! Exiting...");
+        LOG_CRITICAL(Frontend, "Failed to initialize GL functions: {}", SDL_GetError());
         exit(1);
     }
 
@@ -109,16 +135,18 @@ EmuWindow_SDL2::EmuWindow_SDL2() {
     OnMinimalClientAreaChangeRequest(GetActiveConfig().min_client_area_size);
     SDL_PumpEvents();
     SDL_GL_SetSwapInterval(Settings::values.use_vsync);
+    LOG_INFO(Frontend, "Citra Version: {} | {}-{}", Common::g_build_fullname, Common::g_scm_branch,
+             Common::g_scm_desc);
+    Settings::LogSettings();
 
     DoneCurrent();
 }
 
 EmuWindow_SDL2::~EmuWindow_SDL2() {
-    SDL_GL_DeleteContext(gl_context);
-    SDL_Quit();
-
     Network::Shutdown();
     InputCommon::Shutdown();
+    SDL_GL_DeleteContext(gl_context);
+    SDL_Quit();
 }
 
 void EmuWindow_SDL2::SwapBuffers() {
@@ -158,6 +186,8 @@ void EmuWindow_SDL2::PollEvents() {
             break;
         case SDL_QUIT:
             is_open = false;
+            break;
+        default:
             break;
         }
     }

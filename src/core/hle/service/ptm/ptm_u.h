@@ -4,19 +4,14 @@
 
 #pragma once
 
-#include "core/hle/service/service.h"
+#include <memory>
+#include "core/hle/service/ptm/ptm.h"
 
-namespace Service {
-namespace PTM {
+namespace Service::PTM {
 
-class PTM_U final : public Interface {
+class PTM_U final : public Module::Interface {
 public:
-    PTM_U();
-
-    std::string GetPortName() const override {
-        return "ptm:u";
-    }
+    explicit PTM_U(std::shared_ptr<Module> ptm);
 };
 
-} // namespace PTM
-} // namespace Service
+} // namespace Service::PTM

@@ -9,7 +9,7 @@
 #include <QTreeView>
 #include <boost/container/flat_set.hpp>
 #include "core/core.h"
-#include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/object.h"
 
 class EmuThread;
 
@@ -20,18 +20,20 @@ class Mutex;
 class Semaphore;
 class Thread;
 class Timer;
-}
+} // namespace Kernel
 
 class WaitTreeThread;
 
 class WaitTreeItem : public QObject {
     Q_OBJECT
 public:
+    ~WaitTreeItem() override;
+
     virtual bool IsExpandable() const;
     virtual std::vector<std::unique_ptr<WaitTreeItem>> GetChildren() const;
     virtual QString GetText() const = 0;
     virtual QColor GetColor() const;
-    virtual ~WaitTreeItem();
+
     void Expand();
     WaitTreeItem* Parent() const;
     const std::vector<std::unique_ptr<WaitTreeItem>>& Children() const;

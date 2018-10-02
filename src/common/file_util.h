@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -16,20 +17,19 @@
 #include "common/string_util.h"
 #endif
 
-// User directory indices for GetUserPath
-enum {
-    D_USER_IDX,
-    D_ROOT_IDX,
-    D_CONFIG_IDX,
-    D_CACHE_IDX,
-    D_SDMC_IDX,
-    D_NAND_IDX,
-    D_SYSDATA_IDX,
-    D_LOGS_IDX,
-    NUM_PATH_INDICES
-};
-
 namespace FileUtil {
+
+// User paths for GetUserPath
+enum class UserPath {
+    CacheDir,
+    ConfigDir,
+    LogDir,
+    NANDDir,
+    RootDir,
+    SDMCDir,
+    SysDataDir,
+    UserDir,
+};
 
 // FileSystem tree node/
 struct FSTEntry {
@@ -85,7 +85,7 @@ bool CreateEmptyFile(const std::string& filename);
  * @return whether handling the entry succeeded
  */
 using DirectoryEntryCallable = std::function<bool(
-    unsigned* num_entries_out, const std::string& directory, const std::string& virtual_name)>;
+    u64* num_entries_out, const std::string& directory, const std::string& virtual_name)>;
 
 /**
  * Scans a directory, calling the callback for each file/directory contained within.
@@ -96,7 +96,7 @@ using DirectoryEntryCallable = std::function<bool(
  * @param callback The callback which will be called for each entry
  * @return whether scanning the directory succeeded
  */
-bool ForeachDirectoryEntry(unsigned* num_entries_out, const std::string& directory,
+bool ForeachDirectoryEntry(u64* num_entries_out, const std::string& directory,
                            DirectoryEntryCallable callback);
 
 /**
@@ -106,8 +106,8 @@ bool ForeachDirectoryEntry(unsigned* num_entries_out, const std::string& directo
  * @param recursion Number of children directories to read before giving up.
  * @return the total number of files/directories found
  */
-unsigned ScanDirectoryTree(const std::string& directory, FSTEntry& parent_entry,
-                           unsigned int recursion = 0);
+u64 ScanDirectoryTree(const std::string& directory, FSTEntry& parent_entry,
+                      unsigned int recursion = 0);
 
 // deletes the given directory and anything under it. Returns true on success.
 bool DeleteDirRecursively(const std::string& directory, unsigned int recursion = 256);
@@ -123,7 +123,7 @@ bool SetCurrentDir(const std::string& directory);
 
 // Returns a pointer to a string with a Citra data dir in the user's home
 // directory. To be used in "multi-user" mode (that is, installed).
-const std::string& GetUserPath(const unsigned int DirIDX, const std::string& newPath = "");
+const std::string& GetUserPath(UserPath path, const std::string& new_path = "");
 
 // Returns the path to where the sys file are
 std::string GetSysDirectory();
@@ -133,7 +133,7 @@ std::string GetBundleDirectory();
 #endif
 
 #ifdef _WIN32
-std::string& GetExeDirectory();
+const std::string& GetExeDirectory();
 std::string AppDataRoamingDirectory();
 #endif
 
@@ -156,7 +156,11 @@ void SplitFilename83(const std::string& filename, std::array<char, 9>& short_nam
 class IOFile : public NonCopyable {
 public:
     IOFile();
-    IOFile(const std::string& filename, const char openmode[]);
+
+    // flags is used for windows specific file open mode flags, which
+    // allows citra to open the logs in shared write mode, so that the file
+    // isn't considered "locked" while citra is open and people can open the log file and view it
+    IOFile(const std::string& filename, const char openmode[], int flags = 0);
 
     ~IOFile();
 
@@ -165,24 +169,20 @@ public:
 
     void Swap(IOFile& other);
 
-    bool Open(const std::string& filename, const char openmode[]);
+    bool Open(const std::string& filename, const char openmode[], int flags = 0);
     bool Close();
 
     template <typename T>
-    size_t ReadArray(T* data, size_t length) {
-        static_assert(std::is_standard_layout<T>(),
-                      "Given array does not consist of standard layout objects");
-#if (__GNUC__ >= 5) || defined(__clang__) || defined(_MSC_VER)
-        static_assert(std::is_trivially_copyable<T>(),
+    std::size_t ReadArray(T* data, std::size_t length) {
+        static_assert(std::is_trivially_copyable_v<T>,
                       "Given array does not consist of trivially copyable objects");
-#endif
 
         if (!IsOpen()) {
             m_good = false;
-            return -1;
+            return std::numeric_limits<std::size_t>::max();
         }
 
-        size_t items_read = std::fread(data, sizeof(T), length, m_file);
+        std::size_t items_read = std::fread(data, sizeof(T), length, m_file);
         if (items_read != length)
             m_good = false;
 
@@ -190,38 +190,42 @@ public:
     }
 
     template <typename T>
-    size_t WriteArray(const T* data, size_t length) {
-        static_assert(std::is_standard_layout<T>(),
-                      "Given array does not consist of standard layout objects");
-#if (__GNUC__ >= 5) || defined(__clang__) || defined(_MSC_VER)
-        static_assert(std::is_trivially_copyable<T>(),
+    std::size_t WriteArray(const T* data, std::size_t length) {
+        static_assert(std::is_trivially_copyable_v<T>,
                       "Given array does not consist of trivially copyable objects");
-#endif
 
         if (!IsOpen()) {
             m_good = false;
-            return -1;
+            return std::numeric_limits<std::size_t>::max();
         }
 
-        size_t items_written = std::fwrite(data, sizeof(T), length, m_file);
+        std::size_t items_written = std::fwrite(data, sizeof(T), length, m_file);
         if (items_written != length)
             m_good = false;
 
         return items_written;
     }
 
-    size_t ReadBytes(void* data, size_t length) {
+    template <typename T>
+    std::size_t ReadBytes(T* data, std::size_t length) {
+        static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
         return ReadArray(reinterpret_cast<char*>(data), length);
     }
 
-    size_t WriteBytes(const void* data, size_t length) {
+    template <typename T>
+    std::size_t WriteBytes(const T* data, std::size_t length) {
+        static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
         return WriteArray(reinterpret_cast<const char*>(data), length);
     }
 
     template <typename T>
-    size_t WriteObject(const T& object) {
-        static_assert(!std::is_pointer<T>::value, "Given object is a pointer");
+    std::size_t WriteObject(const T& object) {
+        static_assert(!std::is_pointer_v<T>, "WriteObject arguments must not be a pointer");
         return WriteArray(&object, 1);
+    }
+
+    std::size_t WriteString(const std::string& str) {
+        return WriteArray(str.c_str(), str.length());
     }
 
     bool IsOpen() const {
@@ -253,13 +257,13 @@ private:
     bool m_good = true;
 };
 
-} // namespace
+} // namespace FileUtil
 
 // To deal with Windows being dumb at unicode:
 template <typename T>
 void OpenFStream(T& fstream, const std::string& filename, std::ios_base::openmode openmode) {
 #ifdef _MSC_VER
-    fstream.open(Common::UTF8ToTStr(filename).c_str(), openmode);
+    fstream.open(Common::UTF8ToUTF16W(filename).c_str(), openmode);
 #else
     fstream.open(filename.c_str(), openmode);
 #endif

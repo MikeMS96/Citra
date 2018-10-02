@@ -75,7 +75,7 @@ struct VirtualMemoryArea {
     /// Memory block backing this VMA.
     std::shared_ptr<std::vector<u8>> backing_block = nullptr;
     /// Offset into the backing_memory the mapping starts from.
-    size_t offset = 0;
+    std::size_t offset = 0;
 
     // Settings for type = BackingMemory
     /// Pointer backing this VMA. It will not be destroyed or freed when the VMA is removed.
@@ -142,8 +142,22 @@ public:
      * @param state MemoryState tag to attach to the VMA.
      */
     ResultVal<VMAHandle> MapMemoryBlock(VAddr target, std::shared_ptr<std::vector<u8>> block,
-                                        size_t offset, u32 size, MemoryState state);
+                                        std::size_t offset, u32 size, MemoryState state);
 
+    /**
+     * Maps part of a ref-counted block of memory at the first free address after the given base.
+     *
+     * @param base The base address to start the mapping at.
+     * @param region_size The max size of the region from where we'll try to find an address.
+     * @param block The block to be mapped.
+     * @param offset Offset into `block` to map from.
+     * @param size Size of the mapping.
+     * @param state MemoryState tag to attach to the VMA.
+     * @returns The address at which the memory was mapped.
+     */
+    ResultVal<VAddr> MapMemoryBlockToBase(VAddr base, u32 region_size,
+                                          std::shared_ptr<std::vector<u8>> block,
+                                          std::size_t offset, u32 size, MemoryState state);
     /**
      * Maps an unmanaged host memory pointer at a given address.
      *
@@ -165,6 +179,21 @@ public:
      */
     ResultVal<VMAHandle> MapMMIO(VAddr target, PAddr paddr, u32 size, MemoryState state,
                                  Memory::MMIORegionPointer mmio_handler);
+
+    /**
+     * Updates the memory state and permissions of the specified range. The range's original memory
+     * state and permissions must match the `expected` parameters.
+     *
+     * @param target The guest address of the beginning of the range.
+     * @param size The size of the range
+     * @param expected_state Expected MemoryState of the range.
+     * @param expected_perms Expected VMAPermission of the range.
+     * @param new_state New MemoryState for the range.
+     * @param new_perms New VMAPermission for the range.
+     */
+    ResultCode ChangeMemoryState(VAddr target, u32 size, MemoryState expected_state,
+                                 VMAPermission expected_perms, MemoryState new_state,
+                                 VMAPermission new_perms);
 
     /// Unmaps a range of addresses, splitting VMAs as necessary.
     ResultCode UnmapRange(VAddr target, u32 size);
@@ -224,4 +253,4 @@ private:
     /// Updates the pages corresponding to this VMA so they match the VMA's attributes.
     void UpdatePageTableForVMA(const VirtualMemoryArea& vma);
 };
-}
+} // namespace Kernel

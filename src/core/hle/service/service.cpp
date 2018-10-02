@@ -6,9 +6,10 @@
 #include <fmt/format.h>
 #include "common/assert.h"
 #include "common/logging/log.h"
-#include "common/string_util.h"
+#include "core/core.h"
 #include "core/hle/ipc.h"
 #include "core/hle/kernel/client_port.h"
+#include "core/hle/kernel/handle_table.h"
 #include "core/hle/kernel/process.h"
 #include "core/hle/kernel/server_port.h"
 #include "core/hle/kernel/server_session.h"
@@ -20,28 +21,31 @@
 #include "core/hle/service/cam/cam.h"
 #include "core/hle/service/cecd/cecd.h"
 #include "core/hle/service/cfg/cfg.h"
-#include "core/hle/service/csnd_snd.h"
+#include "core/hle/service/csnd/csnd_snd.h"
 #include "core/hle/service/dlp/dlp.h"
-#include "core/hle/service/dsp_dsp.h"
+#include "core/hle/service/dsp/dsp_dsp.h"
 #include "core/hle/service/err_f.h"
 #include "core/hle/service/frd/frd.h"
 #include "core/hle/service/fs/archive.h"
-#include "core/hle/service/gsp_gpu.h"
-#include "core/hle/service/gsp_lcd.h"
+#include "core/hle/service/fs/fs_user.h"
+#include "core/hle/service/gsp/gsp.h"
+#include "core/hle/service/gsp/gsp_lcd.h"
 #include "core/hle/service/hid/hid.h"
 #include "core/hle/service/http_c.h"
 #include "core/hle/service/ir/ir.h"
 #include "core/hle/service/ldr_ro/ldr_ro.h"
 #include "core/hle/service/mic_u.h"
 #include "core/hle/service/mvd/mvd.h"
-#include "core/hle/service/ndm/ndm.h"
+#include "core/hle/service/ndm/ndm_u.h"
 #include "core/hle/service/news/news.h"
 #include "core/hle/service/nfc/nfc.h"
 #include "core/hle/service/nim/nim.h"
 #include "core/hle/service/ns/ns.h"
 #include "core/hle/service/nwm/nwm.h"
-#include "core/hle/service/pm_app.h"
+#include "core/hle/service/pm/pm.h"
+#include "core/hle/service/ps/ps_ps.h"
 #include "core/hle/service/ptm/ptm.h"
+#include "core/hle/service/pxi/pxi.h"
 #include "core/hle/service/qtm/qtm.h"
 #include "core/hle/service/service.h"
 #include "core/hle/service/sm/sm.h"
@@ -59,6 +63,58 @@ namespace Service {
 
 std::unordered_map<std::string, SharedPtr<ClientPort>> g_kernel_named_ports;
 
+const std::array<ServiceModuleInfo, 40> service_module_map{
+    {{"FS", 0x00040130'00001102, FS::InstallInterfaces},
+     {"PM", 0x00040130'00001202, PM::InstallInterfaces},
+     {"LDR", 0x00040130'00003702, LDR::InstallInterfaces},
+     {"PXI", 0x00040130'00001402, PXI::InstallInterfaces},
+
+     {"ERR", 0x00040030'00008A02, [](SM::ServiceManager& sm) { ERR::InstallInterfaces(); }},
+     {"AC", 0x00040130'00002402, AC::InstallInterfaces},
+     {"ACT", 0x00040130'00003802, ACT::InstallInterfaces},
+     {"AM", 0x00040130'00001502, AM::InstallInterfaces},
+     {"BOSS", 0x00040130'00003402, BOSS::InstallInterfaces},
+     {"CAM", 0x00040130'00001602,
+      [](SM::ServiceManager& sm) {
+          CAM::InstallInterfaces(sm);
+          Y2R::InstallInterfaces(sm);
+      }},
+     {"CECD", 0x00040130'00002602, CECD::InstallInterfaces},
+     {"CFG", 0x00040130'00001702, CFG::InstallInterfaces},
+     {"DLP", 0x00040130'00002802, DLP::InstallInterfaces},
+     {"DSP", 0x00040130'00001A02, DSP::InstallInterfaces},
+     {"FRD", 0x00040130'00003202, FRD::InstallInterfaces},
+     {"GSP", 0x00040130'00001C02, GSP::InstallInterfaces},
+     {"HID", 0x00040130'00001D02, HID::InstallInterfaces},
+     {"IR", 0x00040130'00003302, IR::InstallInterfaces},
+     {"MIC", 0x00040130'00002002, MIC::InstallInterfaces},
+     {"MVD", 0x00040130'20004102, MVD::InstallInterfaces},
+     {"NDM", 0x00040130'00002B02, NDM::InstallInterfaces},
+     {"NEWS", 0x00040130'00003502, NEWS::InstallInterfaces},
+     {"NFC", 0x00040130'00004002, NFC::InstallInterfaces},
+     {"NIM", 0x00040130'00002C02, NIM::InstallInterfaces},
+     {"NS", 0x00040130'00008002,
+      [](SM::ServiceManager& sm) {
+          NS::InstallInterfaces(sm);
+          APT::InstallInterfaces(sm);
+      }},
+     {"NWM", 0x00040130'00002D02, NWM::InstallInterfaces},
+     {"PTM", 0x00040130'00002202, PTM::InstallInterfaces},
+     {"QTM", 0x00040130'00004202, QTM::InstallInterfaces},
+     {"CSND", 0x00040130'00002702, CSND::InstallInterfaces},
+     {"HTTP", 0x00040130'00002902, HTTP::InstallInterfaces},
+     {"SOC", 0x00040130'00002E02, SOC::InstallInterfaces},
+     {"SSL", 0x00040130'00002F02, SSL::InstallInterfaces},
+     // no HLE implementation
+     {"CDC", 0x00040130'00001802, nullptr},
+     {"GPIO", 0x00040130'00001B02, nullptr},
+     {"I2C", 0x00040130'00001E02, nullptr},
+     {"MCU", 0x00040130'00001F02, nullptr},
+     {"MP", 0x00040130'00002A02, nullptr},
+     {"PDN", 0x00040130'00002102, nullptr},
+     {"PS", 0x00040130'00003102, nullptr},
+     {"SPI", 0x00040130'00002302, nullptr}}};
+
 /**
  * Creates a function string for logging, complete with the name (or header code, depending
  * on what's passed in) the port name, and all the cmd_buff arguments.
@@ -68,51 +124,12 @@ static std::string MakeFunctionString(const char* name, const char* port_name,
     // Number of params == bits 0-5 + bits 6-11
     int num_params = (cmd_buff[0] & 0x3F) + ((cmd_buff[0] >> 6) & 0x3F);
 
-    std::string function_string =
-        Common::StringFromFormat("function '%s': port=%s", name, port_name);
+    std::string function_string = fmt::format("function '{}': port={}", name, port_name);
     for (int i = 1; i <= num_params; ++i) {
-        function_string += Common::StringFromFormat(", cmd_buff[%i]=0x%X", i, cmd_buff[i]);
+        function_string += fmt::format(", cmd_buff[{}]={:#X}", i, cmd_buff[i]);
     }
     return function_string;
 }
-
-Interface::Interface(u32 max_sessions) : max_sessions(max_sessions) {}
-Interface::~Interface() = default;
-
-void Interface::HandleSyncRequest(SharedPtr<ServerSession> server_session) {
-    // TODO(Subv): Make use of the server_session in the HLE service handlers to distinguish which
-    // session triggered each command.
-
-    u32* cmd_buff = Kernel::GetCommandBuffer();
-    auto itr = m_functions.find(cmd_buff[0]);
-
-    if (itr == m_functions.end() || itr->second.func == nullptr) {
-        std::string function_name = (itr == m_functions.end())
-                                        ? Common::StringFromFormat("0x%08X", cmd_buff[0])
-                                        : itr->second.name;
-        LOG_ERROR(
-            Service, "unknown / unimplemented %s",
-            MakeFunctionString(function_name.c_str(), GetPortName().c_str(), cmd_buff).c_str());
-
-        // TODO(bunnei): Hack - ignore error
-        cmd_buff[1] = 0;
-        return;
-    }
-    LOG_TRACE(Service, "%s",
-              MakeFunctionString(itr->second.name, GetPortName().c_str(), cmd_buff).c_str());
-
-    itr->second.func(this);
-}
-
-void Interface::Register(const FunctionInfo* functions, size_t n) {
-    m_functions.reserve(n);
-    for (size_t i = 0; i < n; ++i) {
-        // Usually this array is sorted by id already, so hint to instead at the end
-        m_functions.emplace_hint(m_functions.cend(), functions[i].id, functions[i]);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ServiceFrameworkBase::ServiceFrameworkBase(const char* service_name, u32 max_sessions,
                                            InvokerFn* handler_invoker)
@@ -135,9 +152,9 @@ void ServiceFrameworkBase::InstallAsNamedPort() {
     AddNamedPort(service_name, std::move(client_port));
 }
 
-void ServiceFrameworkBase::RegisterHandlersBase(const FunctionInfoBase* functions, size_t n) {
+void ServiceFrameworkBase::RegisterHandlersBase(const FunctionInfoBase* functions, std::size_t n) {
     handlers.reserve(handlers.size() + n);
-    for (size_t i = 0; i < n; ++i) {
+    for (std::size_t i = 0; i < n; ++i) {
         // Usually this array is sorted by id already, so hint to insert at the end
         handlers.emplace_hint(handlers.cend(), functions[i].expected_header, functions[i]);
     }
@@ -148,15 +165,15 @@ void ServiceFrameworkBase::ReportUnimplementedFunction(u32* cmd_buf, const Funct
     int num_params = header.normal_params_size + header.translate_params_size;
     std::string function_name = info == nullptr ? fmt::format("{:#08x}", cmd_buf[0]) : info->name;
 
-    fmt::MemoryWriter w;
-    w.write("function '{}': port='{}' cmd_buf={{[0]={:#x}", function_name, service_name,
-            cmd_buf[0]);
+    fmt::memory_buffer buf;
+    fmt::format_to(buf, "function '{}': port='{}' cmd_buf={{[0]={:#x}", function_name, service_name,
+                   cmd_buf[0]);
     for (int i = 1; i <= num_params; ++i) {
-        w.write(", [{}]={:#x}", i, cmd_buf[i]);
+        fmt::format_to(buf, ", [{}]={:#x}", i, cmd_buf[i]);
     }
-    w << '}';
+    buf.push_back('}');
 
-    LOG_ERROR(Service, "unknown / unimplemented %s", w.c_str());
+    LOG_ERROR(Service, "unknown / unimplemented {}", fmt::to_string(buf));
     // TODO(bunnei): Hack - ignore error
     cmd_buf[1] = 0;
 }
@@ -177,11 +194,19 @@ void ServiceFrameworkBase::HandleSyncRequest(SharedPtr<ServerSession> server_ses
     context.PopulateFromIncomingCommandBuffer(cmd_buf, *Kernel::g_current_process,
                                               Kernel::g_handle_table);
 
-    LOG_TRACE(Service, "%s",
-              MakeFunctionString(info->name, GetServiceName().c_str(), cmd_buf).c_str());
+    LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName().c_str(), cmd_buf));
     handler_invoker(this, info->handler_callback, context);
-    context.WriteToOutgoingCommandBuffer(cmd_buf, *Kernel::g_current_process,
-                                         Kernel::g_handle_table);
+
+    auto thread = Kernel::GetCurrentThread();
+    ASSERT(thread->status == Kernel::ThreadStatus::Running ||
+           thread->status == Kernel::ThreadStatus::WaitHleEvent);
+    // Only write the response immediately if the thread is still running. If the HLE handler put
+    // the thread to sleep then the writing of the command buffer will be deferred to the wakeup
+    // callback.
+    if (thread->status == Kernel::ThreadStatus::Running) {
+        context.WriteToOutgoingCommandBuffer(cmd_buf, *Kernel::g_current_process,
+                                             Kernel::g_handle_table);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -192,91 +217,40 @@ void AddNamedPort(std::string name, SharedPtr<ClientPort> port) {
     g_kernel_named_ports.emplace(std::move(name), std::move(port));
 }
 
-static void AddNamedPort(Interface* interface_) {
-    SharedPtr<ServerPort> server_port;
-    SharedPtr<ClientPort> client_port;
-    std::tie(server_port, client_port) =
-        ServerPort::CreatePortPair(interface_->GetMaxSessions(), interface_->GetPortName());
-
-    server_port->SetHleHandler(std::shared_ptr<Interface>(interface_));
-    AddNamedPort(interface_->GetPortName(), std::move(client_port));
-}
-
-void AddService(Interface* interface_) {
-    auto server_port =
-        SM::g_service_manager
-            ->RegisterService(interface_->GetPortName(), interface_->GetMaxSessions())
-            .Unwrap();
-    server_port->SetHleHandler(std::shared_ptr<Interface>(interface_));
+static bool AttemptLLE(const ServiceModuleInfo& service_module) {
+    if (!Settings::values.lle_modules.at(service_module.name))
+        return false;
+    std::unique_ptr<Loader::AppLoader> loader =
+        Loader::GetLoader(AM::GetTitleContentPath(FS::MediaType::NAND, service_module.title_id));
+    if (!loader) {
+        LOG_ERROR(Service,
+                  "Service module \"{}\" could not be loaded; Defaulting to HLE implementation.",
+                  service_module.name);
+        return false;
+    }
+    SharedPtr<Kernel::Process> process;
+    loader->Load(process);
+    LOG_DEBUG(Service, "Service module \"{}\" has been successfully loaded.", service_module.name);
+    return true;
 }
 
 /// Initialize ServiceManager
-void Init() {
-    SM::g_service_manager = std::make_shared<SM::ServiceManager>();
-    SM::ServiceManager::InstallInterfaces(SM::g_service_manager);
-
-    NS::InstallInterfaces(*SM::g_service_manager);
-    AC::InstallInterfaces(*SM::g_service_manager);
-
-    AddNamedPort(new ERR::ERR_F);
-
+void Init(std::shared_ptr<SM::ServiceManager>& sm) {
     FS::ArchiveInit();
-    ACT::Init();
-    AM::Init();
-    APT::Init();
-    BOSS::Init();
-    CAM::Init();
-    CECD::Init();
-    CFG::Init();
-    DLP::Init();
-    FRD::Init();
-    HID::Init();
-    IR::Init();
-    MVD::Init();
-    NDM::Init();
-    NEWS::Init();
-    NFC::Init();
-    NIM::Init();
-    NWM::Init();
-    PTM::Init();
-    QTM::Init();
+    SM::ServiceManager::InstallInterfaces(sm);
 
-    AddService(new CSND::CSND_SND);
-    AddService(new DSP_DSP::Interface);
-    AddService(new GSP::GSP_GPU);
-    AddService(new GSP::GSP_LCD);
-    AddService(new HTTP::HTTP_C);
-    AddService(new LDR::LDR_RO);
-    AddService(new MIC::MIC_U);
-    AddService(new PM::PM_APP);
-    AddService(new SOC::SOC_U);
-    AddService(new SSL::SSL_C);
-    AddService(new Y2R::Y2R_U);
-
+    for (const auto& service_module : service_module_map) {
+        if (!AttemptLLE(service_module) && service_module.init_function != nullptr)
+            service_module.init_function(*sm);
+    }
     LOG_DEBUG(Service, "initialized OK");
 }
 
 /// Shutdown ServiceManager
 void Shutdown() {
-    PTM::Shutdown();
-    NFC::Shutdown();
-    NIM::Shutdown();
-    NEWS::Shutdown();
-    NDM::Shutdown();
-    IR::Shutdown();
-    HID::Shutdown();
-    FRD::Shutdown();
-    DLP::Shutdown();
-    CFG::Shutdown();
-    CECD::Shutdown();
-    CAM::Shutdown();
-    BOSS::Shutdown();
-    APT::Shutdown();
-    AM::Shutdown();
     FS::ArchiveShutdown();
 
-    SM::g_service_manager = nullptr;
     g_kernel_named_ports.clear();
     LOG_DEBUG(Service, "shutdown OK");
 }
-}
+} // namespace Service

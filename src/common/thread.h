@@ -11,25 +11,6 @@
 #include <thread>
 #include "common/common_types.h"
 
-// Support for C++11's thread_local keyword was surprisingly spotty in compilers until very
-// recently. Fortunately, thread local variables have been well supported for compilers for a while,
-// but with semantics supporting only POD types, so we can use a few defines to get some amount of
-// backwards compat support.
-// WARNING: This only works correctly with POD types.
-#if defined(__clang__)
-#if !__has_feature(cxx_thread_local)
-#define thread_local __thread
-#endif
-#elif defined(__GNUC__)
-#if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 8)
-#define thread_local __thread
-#endif
-#elif defined(_MSC_VER)
-#if _MSC_VER < 1900
-#define thread_local __declspec(thread)
-#endif
-#endif
-
 namespace Common {
 
 int CurrentThreadId();
@@ -53,6 +34,15 @@ public:
         std::unique_lock<std::mutex> lk(mutex);
         condvar.wait(lk, [&] { return is_set; });
         is_set = false;
+    }
+
+    template <class Duration>
+    bool WaitFor(const std::chrono::duration<Duration>& time) {
+        std::unique_lock<std::mutex> lk(mutex);
+        if (!condvar.wait_for(lk, time, [this] { return is_set; }))
+            return false;
+        is_set = false;
+        return true;
     }
 
     template <class Clock, class Duration>
@@ -79,12 +69,12 @@ private:
 
 class Barrier {
 public:
-    explicit Barrier(size_t count_) : count(count_), waiting(0), generation(0) {}
+    explicit Barrier(std::size_t count_) : count(count_), waiting(0), generation(0) {}
 
     /// Blocks until all "count" threads have called Sync()
     void Sync() {
         std::unique_lock<std::mutex> lk(mutex);
-        const size_t current_generation = generation;
+        const std::size_t current_generation = generation;
 
         if (++waiting == count) {
             generation++;
@@ -99,21 +89,13 @@ public:
 private:
     std::condition_variable condvar;
     std::mutex mutex;
-    const size_t count;
-    size_t waiting;
-    size_t generation; // Incremented once each time the barrier is used
+    const std::size_t count;
+    std::size_t waiting;
+    std::size_t generation; // Incremented once each time the barrier is used
 };
 
 void SleepCurrentThread(int ms);
 void SwitchCurrentThread(); // On Linux, this is equal to sleep 1ms
-
-// Use this function during a spin-wait to make the current thread
-// relax while another thread is working. This may be more efficient
-// than using events because event functions use kernel calls.
-inline void YieldCPU() {
-    std::this_thread::yield();
-}
-
 void SetCurrentThreadName(const char* name);
 
 } // namespace Common

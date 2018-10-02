@@ -4,16 +4,13 @@
 
 #include "core/hle/service/nwm/nwm_cec.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
-const Interface::FunctionInfo FunctionTable[] = {
-    {0x000D0082, nullptr, "SendProbeRequest"},
-};
-
-NWM_CEC::NWM_CEC() {
-    Register(FunctionTable);
+NWM_CEC::NWM_CEC() : ServiceFramework("nwm::CEC") {
+    static const FunctionInfo functions[] = {
+        {0x000D0082, nullptr, "SendProbeRequest"},
+    };
+    RegisterHandlers(functions);
 }
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

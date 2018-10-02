@@ -42,7 +42,8 @@ QVariant BreakPointModel::data(const QModelIndex& index, int role) const {
                 {Pica::DebugContext::Event::BufferSwapped, tr("Buffers swapped")},
             };
 
-            DEBUG_ASSERT(map.size() == static_cast<size_t>(Pica::DebugContext::Event::NumEvents));
+            DEBUG_ASSERT(map.size() ==
+                         static_cast<std::size_t>(Pica::DebugContext::Event::NumEvents));
             return (map.find(event) != map.end()) ? map.at(event) : QString();
         }
 
@@ -129,8 +130,8 @@ void BreakPointModel::OnResumed() {
 
 GraphicsBreakPointsWidget::GraphicsBreakPointsWidget(
     std::shared_ptr<Pica::DebugContext> debug_context, QWidget* parent)
-    : QDockWidget(tr("Pica Breakpoints"), parent),
-      Pica::DebugContext::BreakPointObserver(debug_context) {
+    : QDockWidget(tr("Pica Breakpoints"), parent), Pica::DebugContext::BreakPointObserver(
+                                                       debug_context) {
     setObjectName("PicaBreakPointsWidget");
 
     status_text = new QLabel(tr("Emulation running"));
@@ -145,21 +146,25 @@ GraphicsBreakPointsWidget::GraphicsBreakPointsWidget(
 
     qRegisterMetaType<Pica::DebugContext::Event>("Pica::DebugContext::Event");
 
-    connect(breakpoint_list, SIGNAL(doubleClicked(const QModelIndex&)), this,
-            SLOT(OnItemDoubleClicked(const QModelIndex&)));
+    connect(breakpoint_list, &QTreeView::doubleClicked, this,
+            &GraphicsBreakPointsWidget::OnItemDoubleClicked);
 
-    connect(resume_button, SIGNAL(clicked()), this, SLOT(OnResumeRequested()));
+    connect(resume_button, &QPushButton::clicked, this,
+            &GraphicsBreakPointsWidget::OnResumeRequested);
 
-    connect(this, SIGNAL(BreakPointHit(Pica::DebugContext::Event, void*)), this,
-            SLOT(OnBreakPointHit(Pica::DebugContext::Event, void*)), Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(Resumed()), this, SLOT(OnResumed()));
+    connect(this, &GraphicsBreakPointsWidget::BreakPointHit, this,
+            &GraphicsBreakPointsWidget::OnBreakPointHit, Qt::BlockingQueuedConnection);
+    connect(this, &GraphicsBreakPointsWidget::Resumed, this, &GraphicsBreakPointsWidget::OnResumed);
 
-    connect(this, SIGNAL(BreakPointHit(Pica::DebugContext::Event, void*)), breakpoint_model,
-            SLOT(OnBreakPointHit(Pica::DebugContext::Event)), Qt::BlockingQueuedConnection);
-    connect(this, SIGNAL(Resumed()), breakpoint_model, SLOT(OnResumed()));
+    connect(this, &GraphicsBreakPointsWidget::BreakPointHit, breakpoint_model,
+            &BreakPointModel::OnBreakPointHit, Qt::BlockingQueuedConnection);
+    connect(this, &GraphicsBreakPointsWidget::Resumed, breakpoint_model,
+            &BreakPointModel::OnResumed);
 
-    connect(this, SIGNAL(BreakPointsChanged(const QModelIndex&, const QModelIndex&)),
-            breakpoint_model, SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&)));
+    connect(this, &GraphicsBreakPointsWidget::BreakPointsChanged,
+            [this](const QModelIndex& top_left, const QModelIndex& bottom_right) {
+                breakpoint_model->dataChanged(top_left, bottom_right);
+            });
 
     QWidget* main_widget = new QWidget;
     auto main_layout = new QVBoxLayout;

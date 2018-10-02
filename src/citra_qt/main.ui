@@ -58,8 +58,8 @@
      </property>
     </widget>
     <addaction name="action_Load_File"/>
+    <addaction name="action_Install_CIA"/>
     <addaction name="separator"/>
-    <addaction name="action_Select_Game_List_Root"/>
     <addaction name="menu_recent_files"/>
     <addaction name="separator"/>
     <addaction name="action_Exit"/>
@@ -71,6 +71,7 @@
     <addaction name="action_Start"/>
     <addaction name="action_Pause"/>
     <addaction name="action_Stop"/>
+    <addaction name="action_Restart"/>
     <addaction name="separator"/>
     <addaction name="action_Configure"/>
    </widget>
@@ -85,12 +86,48 @@
      <addaction name="action_Create_Pica_Surface_Viewer"/>
      <addaction name="separator"/>
     </widget>
+    <widget class="QMenu" name="menu_Screen_Layout">
+     <property name="title">
+      <string>Screen Layout</string>
+     </property>
+     <addaction name="action_Screen_Layout_Default"/>
+     <addaction name="action_Screen_Layout_Single_Screen"/>
+     <addaction name="action_Screen_Layout_Large_Screen"/>
+     <addaction name="action_Screen_Layout_Side_by_Side"/>
+     <addaction name="separator"/>
+     <addaction name="action_Screen_Layout_Swap_Screens"/>
+    </widget>
     <addaction name="action_Fullscreen"/>
     <addaction name="action_Single_Window_Mode"/>
+    <addaction name="menu_Screen_Layout"/>
+    <addaction name="separator"/>
     <addaction name="action_Display_Dock_Widget_Headers"/>
     <addaction name="action_Show_Filter_Bar"/>
     <addaction name="action_Show_Status_Bar"/>
+    <addaction name="separator"/>
     <addaction name="menu_View_Debugging"/>
+   </widget>
+   <widget class="QMenu" name="menu_Movie">
+    <property name="title">
+     <string>Movie</string>
+    </property>
+    <addaction name="action_Record_Movie"/>
+    <addaction name="action_Play_Movie"/>
+    <addaction name="action_Stop_Recording_Playback"/>
+   </widget>
+   <widget class="QMenu" name="menu_Multiplayer">
+    <property name="enabled">
+     <bool>true</bool>
+    </property>
+    <property name="title">
+     <string>Multiplayer</string>
+    </property>
+    <addaction name="action_View_Lobby"/>
+    <addaction name="action_Start_Room"/>
+    <addaction name="action_Connect_To_Room"/>
+    <addaction name="separator"/>
+    <addaction name="action_Show_Room"/>
+    <addaction name="action_Leave_Room"/>
    </widget>
    <widget class="QMenu" name="menu_Help">
     <property name="title">
@@ -99,17 +136,26 @@
     <addaction name="action_Check_For_Updates"/>
     <addaction name="action_Open_Maintenance_Tool"/>
     <addaction name="separator"/>
+    <addaction name="action_Report_Compatibility"/>
+    <addaction name="separator"/>
     <addaction name="action_FAQ"/>
     <addaction name="action_About"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menu_Emulation"/>
    <addaction name="menu_View"/>
+   <addaction name="menu_Movie"/>
+   <addaction name="menu_Multiplayer"/>
    <addaction name="menu_Help"/>
   </widget>
   <action name="action_Load_File">
    <property name="text">
     <string>Load File...</string>
+   </property>
+  </action>
+  <action name="action_Install_CIA">
+   <property name="text">
+    <string>Install CIA...</string>
    </property>
   </action>
   <action name="action_Load_Symbol_Map">
@@ -206,6 +252,67 @@
     <string>Create Pica Surface Viewer</string>
    </property>
   </action>
+  <action name="action_Record_Movie">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Record Movie</string>
+   </property>
+  </action>
+  <action name="action_Play_Movie">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Play Movie</string>
+   </property>
+  </action>
+  <action name="action_Stop_Recording_Playback">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Stop Recording / Playback</string>
+   </property>
+  </action>
+  <action name="action_View_Lobby">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Browse Public Game Lobby</string>
+   </property>
+  </action>
+  <action name="action_Start_Room">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Create Room</string>
+   </property>
+  </action>
+  <action name="action_Leave_Room">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Leave Room</string>
+   </property>
+  </action>
+  <action name="action_Connect_To_Room">
+   <property name="text">
+    <string>Direct Connect to Room</string>
+   </property>
+  </action>
+  <action name="action_Show_Room">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Show Current Room</string>
+   </property>
+  </action>
   <action name="action_Fullscreen">
    <property name="checkable">
     <bool>true</bool>
@@ -222,11 +329,71 @@
     <string>Opens the maintenance tool to modify your Citra installation</string>
    </property>
   </action>
+  <action name="action_Screen_Layout_Default">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Default</string>
+   </property>
+  </action>
+  <action name="action_Screen_Layout_Single_Screen">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Single Screen</string>
+   </property>
+  </action>
+  <action name="action_Screen_Layout_Large_Screen">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Large Screen</string>
+   </property>
+  </action>
+  <action name="action_Screen_Layout_Side_by_Side">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Side by Side</string>
+   </property>
+  </action>
+  <action name="action_Screen_Layout_Swap_Screens">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Swap Screens</string>
+   </property>
+  </action>
   <action name="action_Check_For_Updates">
    <property name="text">
     <string>Check for Updates</string>
    </property>
   </action>
+  <action name="action_Report_Compatibility">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Report Compatibility</string>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+  </action>
+  <action name="action_Restart">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Restart</string>
+   </property>
+  </action>
  </widget>
  <resources/>
+ <connections/>
 </ui>

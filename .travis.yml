@@ -6,8 +6,11 @@ matrix:
       dist: trusty
       addons:
         apt:
+          sources:
+            - llvm-toolchain-trusty-6.0
+            - ubuntu-toolchain-r-test
           packages:
-            - clang-format-3.9
+            - clang-format-6.0
       script: "./.travis/clang-format/script.sh"
     - os: linux
       env: NAME="linux build"
@@ -21,19 +24,43 @@ matrix:
       install: "./.travis/linux/deps.sh"
       script: "./.travis/linux/build.sh"
       after_success: "./.travis/linux/upload.sh"
+      cache: ccache
+    - if: repo = citra-emu/citra AND branch = master AND type = push
+      os: linux
+      env: NAME="transifex push"
+      sudo: required
+      dist: trusty
+      services: docker
+      install: "./.travis/transifex/deps.sh"
+      script: "./.travis/transifex/build.sh"
     - os: osx
       env: NAME="macos build"
       sudo: false
-      osx_image: xcode7.3
+      osx_image: xcode10
       install: "./.travis/macos/deps.sh"
       script: "./.travis/macos/build.sh"
       after_success: "./.travis/macos/upload.sh"
+      cache: ccache
     - os: linux
       env: NAME="linux build (frozen versions of dependencies)"
       sudo: required
       dist: trusty
       services: docker
+      cache: ccache
       script: "./.travis/linux-frozen/build.sh"
+    - os: linux
+      env: NAME="MinGW build"
+      sudo: required
+      dist: trusty
+      services: docker
+      addons:
+        apt:
+          packages:
+            - p7zip-full
+      install: "./.travis/linux-mingw/deps.sh"
+      script: "./.travis/linux-mingw/build.sh"
+      after_success: "./.travis/linux-mingw/upload.sh"
+      cache: ccache
 
 deploy:
   provider: releases

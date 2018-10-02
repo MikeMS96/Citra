@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include "core/hle/service/service.h"
+#include "core/hle/service/apt/apt.h"
 
-namespace Service {
-namespace APT {
+namespace Service::APT {
 
 // Application and title launching service. These services handle signaling for home/power button as
 // well. Only one session for either APT service can be open at a time, normally processes close the
@@ -16,14 +15,9 @@ namespace APT {
 // svcBreak when the command isn't accessible). See http://3dbrew.org/wiki/NS#APT_Services.
 
 /// Interface to "APT:U" service
-class APT_U_Interface : public Service::Interface {
+class APT_U final : public Module::Interface {
 public:
-    APT_U_Interface();
-
-    std::string GetPortName() const override {
-        return "APT:U";
-    }
+    explicit APT_U(std::shared_ptr<Module> apt);
 };
 
-} // namespace APT
-} // namespace Service
+} // namespace Service::APT

@@ -48,7 +48,7 @@ void PrimitiveAssembler<VertexType>::SubmitVertex(const VertexType& vtx,
         break;
 
     default:
-        LOG_ERROR(HW_GPU, "Unknown triangle topology %x:", (int)topology);
+        LOG_ERROR(HW_GPU, "Unknown triangle topology {:x}:", (int)topology);
         break;
     }
 }
@@ -71,7 +71,17 @@ void PrimitiveAssembler<VertexType>::Reconfigure(PipelineRegs::TriangleTopology 
     this->topology = topology;
 }
 
+template <typename VertexType>
+bool PrimitiveAssembler<VertexType>::IsEmpty() const {
+    return buffer_index == 0 && strip_ready == false;
+}
+
+template <typename VertexType>
+PipelineRegs::TriangleTopology PrimitiveAssembler<VertexType>::GetTopology() const {
+    return topology;
+}
+
 // explicitly instantiate use cases
 template struct PrimitiveAssembler<Shader::OutputVertex>;
 
-} // namespace
+} // namespace Pica

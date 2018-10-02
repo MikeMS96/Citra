@@ -4,21 +4,30 @@
 
 #include <memory>
 #include <utility>
-#include "audio_core/audio_core.h"
+#include "audio_core/dsp_interface.h"
+#include "audio_core/hle/hle.h"
 #include "common/logging/log.h"
 #include "core/arm/arm_interface.h"
+#ifdef ARCHITECTURE_x86_64
 #include "core/arm/dynarmic/arm_dynarmic.h"
+#endif
 #include "core/arm/dyncom/arm_dyncom.h"
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/gdbstub/gdbstub.h"
+#include "core/hle/kernel/client_port.h"
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/kernel/process.h"
 #include "core/hle/kernel/thread.h"
 #include "core/hle/service/service.h"
+#include "core/hle/service/sm/sm.h"
 #include "core/hw/hw.h"
 #include "core/loader/loader.h"
 #include "core/memory_setup.h"
+#include "core/movie.h"
+#ifdef ENABLE_SCRIPTING
+#include "core/rpc/rpc_server.h"
+#endif
 #include "core/settings.h"
 #include "network/network.h"
 #include "video_core/video_core.h"
@@ -27,7 +36,7 @@ namespace Core {
 
 /*static*/ System System::s_instance;
 
-System::ResultStatus System::RunLoop(int tight_loop) {
+System::ResultStatus System::RunLoop(bool tight_loop) {
     status = ResultStatus::Success;
     if (!cpu_core) {
         return ResultStatus::ErrorNotInitialized;
@@ -40,8 +49,7 @@ System::ResultStatus System::RunLoop(int tight_loop) {
         // execute. Otherwise, get out of the loop function.
         if (GDBStub::GetCpuHaltFlag()) {
             if (GDBStub::GetCpuStepFlag()) {
-                GDBStub::SetCpuStepFlag(false);
-                tight_loop = 1;
+                tight_loop = false;
             } else {
                 return ResultStatus::Success;
             }
@@ -56,33 +64,47 @@ System::ResultStatus System::RunLoop(int tight_loop) {
         CoreTiming::Advance();
         PrepareReschedule();
     } else {
-        cpu_core->Run(tight_loop);
+        CoreTiming::Advance();
+        if (tight_loop) {
+            cpu_core->Run();
+        } else {
+            cpu_core->Step();
+        }
+    }
+
+    if (GDBStub::IsServerEnabled()) {
+        GDBStub::SetCpuStepFlag(false);
     }
 
     HW::Update();
     Reschedule();
 
+    if (reset_requested.exchange(false)) {
+        Reset();
+    } else if (shutdown_requested.exchange(false)) {
+        return ResultStatus::ShutdownRequested;
+    }
+
     return status;
 }
 
 System::ResultStatus System::SingleStep() {
-    return RunLoop(1);
+    return RunLoop(false);
 }
 
-System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& filepath) {
+System::ResultStatus System::Load(EmuWindow& emu_window, const std::string& filepath) {
     app_loader = Loader::GetLoader(filepath);
 
     if (!app_loader) {
-        LOG_CRITICAL(Core, "Failed to obtain loader for %s!", filepath.c_str());
+        LOG_CRITICAL(Core, "Failed to obtain loader for {}!", filepath);
         return ResultStatus::ErrorGetLoader;
     }
     std::pair<boost::optional<u32>, Loader::ResultStatus> system_mode =
         app_loader->LoadKernelSystemMode();
 
     if (system_mode.second != Loader::ResultStatus::Success) {
-        LOG_CRITICAL(Core, "Failed to determine system mode (Error %i)!",
+        LOG_CRITICAL(Core, "Failed to determine system mode (Error {})!",
                      static_cast<int>(system_mode.second));
-        System::Shutdown();
 
         switch (system_mode.second) {
         case Loader::ResultStatus::ErrorEncrypted:
@@ -96,7 +118,7 @@ System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& file
 
     ResultStatus init_result{Init(emu_window, system_mode.first.get())};
     if (init_result != ResultStatus::Success) {
-        LOG_CRITICAL(Core, "Failed to initialize system (Error %u)!",
+        LOG_CRITICAL(Core, "Failed to initialize system (Error {})!",
                      static_cast<u32>(init_result));
         System::Shutdown();
         return init_result;
@@ -104,7 +126,7 @@ System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& file
 
     const Loader::ResultStatus load_result{app_loader->Load(Kernel::g_current_process)};
     if (Loader::ResultStatus::Success != load_result) {
-        LOG_CRITICAL(Core, "Failed to load ROM (Error %u)!", static_cast<u32>(load_result));
+        LOG_CRITICAL(Core, "Failed to load ROM (Error {})!", static_cast<u32>(load_result));
         System::Shutdown();
 
         switch (load_result) {
@@ -118,6 +140,8 @@ System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& file
     }
     Memory::SetCurrentPageTable(&Kernel::g_current_process->vm_manager.page_table);
     status = ResultStatus::Success;
+    m_emu_window = &emu_window;
+    m_filepath = filepath;
     return status;
 }
 
@@ -139,26 +163,43 @@ void System::Reschedule() {
     Kernel::Reschedule();
 }
 
-System::ResultStatus System::Init(EmuWindow* emu_window, u32 system_mode) {
+System::ResultStatus System::Init(EmuWindow& emu_window, u32 system_mode) {
     LOG_DEBUG(HW_Memory, "initialized OK");
 
+    CoreTiming::Init();
+
     if (Settings::values.use_cpu_jit) {
+#ifdef ARCHITECTURE_x86_64
         cpu_core = std::make_unique<ARM_Dynarmic>(USER32MODE);
+#else
+        cpu_core = std::make_unique<ARM_DynCom>(USER32MODE);
+        LOG_WARNING(Core, "CPU JIT requested, but Dynarmic not available");
+#endif
     } else {
         cpu_core = std::make_unique<ARM_DynCom>(USER32MODE);
     }
 
+    dsp_core = std::make_unique<AudioCore::DspHle>();
+    dsp_core->SetSink(Settings::values.sink_id, Settings::values.audio_device_id);
+    dsp_core->EnableStretching(Settings::values.enable_audio_stretching);
+
     telemetry_session = std::make_unique<Core::TelemetrySession>();
 
-    CoreTiming::Init();
+#ifdef ENABLE_SCRIPTING
+    rpc_server = std::make_unique<RPC::RPCServer>();
+#endif
+
+    service_manager = std::make_shared<Service::SM::ServiceManager>();
+    shared_page_handler = std::make_shared<SharedPage::Handler>();
+
     HW::Init();
     Kernel::Init(system_mode);
-    Service::Init();
-    AudioCore::Init();
+    Service::Init(service_manager);
     GDBStub::Init();
 
-    if (!VideoCore::Init(emu_window)) {
-        return ResultStatus::ErrorVideoCore;
+    ResultStatus result = VideoCore::Init(emu_window);
+    if (result != ResultStatus::Success) {
+        return result;
     }
 
     LOG_DEBUG(Core, "Initialized OK");
@@ -168,6 +209,18 @@ System::ResultStatus System::Init(EmuWindow* emu_window, u32 system_mode) {
     perf_stats.BeginSystemFrame();
 
     return ResultStatus::Success;
+}
+
+Service::SM::ServiceManager& System::ServiceManager() {
+    return *service_manager;
+}
+
+const Service::SM::ServiceManager& System::ServiceManager() const {
+    return *service_manager;
+}
+
+void System::RegisterSoftwareKeyboard(std::shared_ptr<Frontend::SoftwareKeyboard> swkbd) {
+    registered_swkbd = std::move(swkbd);
 }
 
 void System::Shutdown() {
@@ -182,21 +235,36 @@ void System::Shutdown() {
 
     // Shutdown emulation session
     GDBStub::Shutdown();
-    AudioCore::Shutdown();
     VideoCore::Shutdown();
     Service::Shutdown();
     Kernel::Shutdown();
     HW::Shutdown();
+    telemetry_session.reset();
+#ifdef ENABLE_SCRIPTING
+    rpc_server.reset();
+#endif
+    service_manager.reset();
+    dsp_core.reset();
+    cpu_core.reset();
     CoreTiming::Shutdown();
-    cpu_core = nullptr;
-    app_loader = nullptr;
-    telemetry_session = nullptr;
+    app_loader.reset();
+
     if (auto room_member = Network::GetRoomMember().lock()) {
         Network::GameInfo game_info{};
         room_member->SendGameInfo(game_info);
     }
 
     LOG_DEBUG(Core, "Shutdown OK");
+}
+
+void System::Reset() {
+    // This is NOT a proper reset, but a temporary workaround by shutting down the system and
+    // reloading.
+    // TODO: Properly implement the reset
+
+    Shutdown();
+    // Reload the system with the same setting
+    Load(*m_emu_window, m_filepath);
 }
 
 } // namespace Core

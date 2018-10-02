@@ -6,17 +6,11 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
-class NWM_SAP final : public Interface {
+class NWM_SAP final : public ServiceFramework<NWM_SAP> {
 public:
     NWM_SAP();
-
-    std::string GetPortName() const override {
-        return "nwm::SAP";
-    }
 };
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

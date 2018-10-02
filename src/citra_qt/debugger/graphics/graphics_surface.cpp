@@ -24,7 +24,8 @@
 
 SurfacePicture::SurfacePicture(QWidget* parent, GraphicsSurfaceWidget* surface_widget_)
     : QLabel(parent), surface_widget(surface_widget_) {}
-SurfacePicture::~SurfacePicture() {}
+
+SurfacePicture::~SurfacePicture() = default;
 
 void SurfacePicture::mousePressEvent(QMouseEvent* event) {
     // Only do something while the left mouse button is held down
@@ -82,24 +83,24 @@ GraphicsSurfaceWidget::GraphicsSurfaceWidget(std::shared_ptr<Pica::DebugContext>
     surface_format_control = new QComboBox;
 
     // Color formats sorted by Pica texture format index
-    surface_format_control->addItem(tr("RGBA8"));
-    surface_format_control->addItem(tr("RGB8"));
-    surface_format_control->addItem(tr("RGB5A1"));
-    surface_format_control->addItem(tr("RGB565"));
-    surface_format_control->addItem(tr("RGBA4"));
-    surface_format_control->addItem(tr("IA8"));
-    surface_format_control->addItem(tr("RG8"));
-    surface_format_control->addItem(tr("I8"));
-    surface_format_control->addItem(tr("A8"));
-    surface_format_control->addItem(tr("IA4"));
-    surface_format_control->addItem(tr("I4"));
-    surface_format_control->addItem(tr("A4"));
-    surface_format_control->addItem(tr("ETC1"));
-    surface_format_control->addItem(tr("ETC1A4"));
-    surface_format_control->addItem(tr("D16"));
-    surface_format_control->addItem(tr("D24"));
-    surface_format_control->addItem(tr("D24X8"));
-    surface_format_control->addItem(tr("X24S8"));
+    surface_format_control->addItem("RGBA8");
+    surface_format_control->addItem("RGB8");
+    surface_format_control->addItem("RGB5A1");
+    surface_format_control->addItem("RGB565");
+    surface_format_control->addItem("RGBA4");
+    surface_format_control->addItem("IA8");
+    surface_format_control->addItem("RG8");
+    surface_format_control->addItem("I8");
+    surface_format_control->addItem("A8");
+    surface_format_control->addItem("IA4");
+    surface_format_control->addItem("I4");
+    surface_format_control->addItem("A4");
+    surface_format_control->addItem("ETC1");
+    surface_format_control->addItem("ETC1A4");
+    surface_format_control->addItem("D16");
+    surface_format_control->addItem("D24");
+    surface_format_control->addItem("D24X8");
+    surface_format_control->addItem("X24S8");
     surface_format_control->addItem(tr("Unknown"));
 
     surface_info_label = new QLabel();
@@ -118,22 +119,24 @@ GraphicsSurfaceWidget::GraphicsSurfaceWidget(std::shared_ptr<Pica::DebugContext>
     save_surface = new QPushButton(QIcon::fromTheme("document-save"), tr("Save"));
 
     // Connections
-    connect(this, SIGNAL(Update()), this, SLOT(OnUpdate()));
-    connect(surface_source_list, SIGNAL(currentIndexChanged(int)), this,
-            SLOT(OnSurfaceSourceChanged(int)));
-    connect(surface_address_control, SIGNAL(ValueChanged(qint64)), this,
-            SLOT(OnSurfaceAddressChanged(qint64)));
-    connect(surface_width_control, SIGNAL(valueChanged(int)), this,
-            SLOT(OnSurfaceWidthChanged(int)));
-    connect(surface_height_control, SIGNAL(valueChanged(int)), this,
-            SLOT(OnSurfaceHeightChanged(int)));
-    connect(surface_format_control, SIGNAL(currentIndexChanged(int)), this,
-            SLOT(OnSurfaceFormatChanged(int)));
-    connect(surface_picker_x_control, SIGNAL(valueChanged(int)), this,
-            SLOT(OnSurfacePickerXChanged(int)));
-    connect(surface_picker_y_control, SIGNAL(valueChanged(int)), this,
-            SLOT(OnSurfacePickerYChanged(int)));
-    connect(save_surface, SIGNAL(clicked()), this, SLOT(SaveSurface()));
+    connect(this, &GraphicsSurfaceWidget::Update, this, &GraphicsSurfaceWidget::OnUpdate);
+    connect(surface_source_list,
+            static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this,
+            &GraphicsSurfaceWidget::OnSurfaceSourceChanged);
+    connect(surface_address_control, &CSpinBox::ValueChanged, this,
+            &GraphicsSurfaceWidget::OnSurfaceAddressChanged);
+    connect(surface_width_control, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+            this, &GraphicsSurfaceWidget::OnSurfaceWidthChanged);
+    connect(surface_height_control, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+            this, &GraphicsSurfaceWidget::OnSurfaceHeightChanged);
+    connect(surface_format_control,
+            static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this,
+            &GraphicsSurfaceWidget::OnSurfaceFormatChanged);
+    connect(surface_picker_x_control, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+            this, &GraphicsSurfaceWidget::OnSurfacePickerXChanged);
+    connect(surface_picker_y_control, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+            this, &GraphicsSurfaceWidget::OnSurfacePickerYChanged);
+    connect(save_surface, &QPushButton::clicked, this, &GraphicsSurfaceWidget::SaveSurface);
 
     auto main_widget = new QWidget;
     auto main_layout = new QVBoxLayout;
@@ -706,7 +709,7 @@ unsigned int GraphicsSurfaceWidget::NibblesPerPixel(GraphicsSurfaceWidget::Forma
     default:
         UNREACHABLE_MSG("GraphicsSurfaceWidget::BytesPerPixel: this should not be reached as this "
                         "function should be given a format which is in "
-                        "GraphicsSurfaceWidget::Format. Instead got %i",
+                        "GraphicsSurfaceWidget::Format. Instead got {}",
                         static_cast<int>(format));
         return 0;
     }

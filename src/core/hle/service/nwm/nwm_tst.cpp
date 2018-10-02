@@ -4,17 +4,14 @@
 
 #include "core/hle/service/nwm/nwm_tst.h"
 
-namespace Service {
-namespace NWM {
+namespace Service::NWM {
 
-/*
-const Interface::FunctionInfo FunctionTable[] = {
-};
-*/
-
-NWM_TST::NWM_TST() {
-    // Register(FunctionTable);
+NWM_TST::NWM_TST() : ServiceFramework("nwm::TST") {
+    /*
+    static const FunctionInfo functions[] = {
+    };
+    RegisterHandlers(functions);
+    */
 }
 
-} // namespace NWM
-} // namespace Service
+} // namespace Service::NWM

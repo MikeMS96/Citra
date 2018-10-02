@@ -8,12 +8,10 @@
 #include <cstddef>
 #include <cstring>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 #include <glad/glad.h>
 #include "common/bit_field.h"
 #include "common/common_types.h"
-#include "common/hash.h"
 #include "common/vector_math.h"
 #include "core/hw/gpu.h"
 #include "video_core/pica_state.h"
@@ -25,16 +23,19 @@
 #include "video_core/regs_texturing.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
 #include "video_core/renderer_opengl/gl_resource_manager.h"
-#include "video_core/renderer_opengl/gl_shader_gen.h"
+#include "video_core/renderer_opengl/gl_shader_manager.h"
 #include "video_core/renderer_opengl/gl_state.h"
+#include "video_core/renderer_opengl/gl_stream_buffer.h"
 #include "video_core/renderer_opengl/pica_to_gl.h"
 #include "video_core/shader/shader.h"
 
+class EmuWindow;
 struct ScreenInfo;
+class ShaderProgramManager;
 
 class RasterizerOpenGL : public VideoCore::RasterizerInterface {
 public:
-    RasterizerOpenGL();
+    explicit RasterizerOpenGL(EmuWindow& renderer);
     ~RasterizerOpenGL() override;
 
     void AddTriangle(const Pica::Shader::OutputVertex& v0, const Pica::Shader::OutputVertex& v1,
@@ -43,18 +44,14 @@ public:
     void NotifyPicaRegisterChanged(u32 id) override;
     void FlushAll() override;
     void FlushRegion(PAddr addr, u32 size) override;
+    void InvalidateRegion(PAddr addr, u32 size) override;
     void FlushAndInvalidateRegion(PAddr addr, u32 size) override;
     bool AccelerateDisplayTransfer(const GPU::Regs::DisplayTransferConfig& config) override;
     bool AccelerateTextureCopy(const GPU::Regs::DisplayTransferConfig& config) override;
     bool AccelerateFill(const GPU::Regs::MemoryFillConfig& config) override;
     bool AccelerateDisplay(const GPU::Regs::FramebufferConfig& config, PAddr framebuffer_addr,
                            u32 pixel_stride, ScreenInfo& screen_info) override;
-
-    /// OpenGL shader generated for a given Pica register state
-    struct PicaShader {
-        /// OpenGL shader resource
-        OGLShader shader;
-    };
+    bool AccelerateDrawBatch(bool is_indexed) override;
 
 private:
     struct SamplerInfo {
@@ -78,6 +75,7 @@ private:
 
     /// Structure that the hardware rendered vertices are composed of
     struct HardwareVertex {
+        HardwareVertex() = default;
         HardwareVertex(const Pica::Shader::OutputVertex& v, bool flip_quaternion) {
             position[0] = v.pos.x.ToFloat32();
             position[1] = v.pos.y.ToFloat32();
@@ -109,56 +107,18 @@ private:
             }
         }
 
-        GLfloat position[4];
-        GLfloat color[4];
-        GLfloat tex_coord0[2];
-        GLfloat tex_coord1[2];
-        GLfloat tex_coord2[2];
+        GLvec4 position;
+        GLvec4 color;
+        GLvec2 tex_coord0;
+        GLvec2 tex_coord1;
+        GLvec2 tex_coord2;
         GLfloat tex_coord0_w;
-        GLfloat normquat[4];
-        GLfloat view[3];
+        GLvec4 normquat;
+        GLvec3 view;
     };
 
-    struct LightSrc {
-        alignas(16) GLvec3 specular_0;
-        alignas(16) GLvec3 specular_1;
-        alignas(16) GLvec3 diffuse;
-        alignas(16) GLvec3 ambient;
-        alignas(16) GLvec3 position;
-        alignas(16) GLvec3 spot_direction; // negated
-        GLfloat dist_atten_bias;
-        GLfloat dist_atten_scale;
-    };
-
-    /// Uniform structure for the Uniform Buffer Object, all vectors must be 16-byte aligned
-    // NOTE: Always keep a vec4 at the end. The GL spec is not clear wether the alignment at
-    //       the end of a uniform block is included in UNIFORM_BLOCK_DATA_SIZE or not.
-    //       Not following that rule will cause problems on some AMD drivers.
-    struct UniformData {
-        alignas(8) GLvec2 framebuffer_scale;
-        GLint alphatest_ref;
-        GLfloat depth_scale;
-        GLfloat depth_offset;
-        GLint scissor_x1;
-        GLint scissor_y1;
-        GLint scissor_x2;
-        GLint scissor_y2;
-        alignas(16) GLvec3 fog_color;
-        alignas(8) GLvec2 proctex_noise_f;
-        alignas(8) GLvec2 proctex_noise_a;
-        alignas(8) GLvec2 proctex_noise_p;
-        alignas(16) GLvec3 lighting_global_ambient;
-        LightSrc light_src[8];
-        alignas(16) GLvec4 const_color[6]; // A vec4 color for each of the six tev stages
-        alignas(16) GLvec4 tev_combiner_buffer_color;
-        alignas(16) GLvec4 clip_coef;
-    };
-
-    static_assert(
-        sizeof(UniformData) == 0x470,
-        "The size of the UniformData structure has changed, update the structure in the shader");
-    static_assert(sizeof(UniformData) < 16384,
-                  "UniformData structure must be less than 16kb as per the OpenGL spec");
+    /// Syncs entire status to match PICA registers
+    void SyncEntireState();
 
     /// Syncs the clip enabled status to match the PICA register
     void SyncClipEnabled();
@@ -189,17 +149,12 @@ private:
 
     /// Syncs the fog states to match the PICA register
     void SyncFogColor();
-    void SyncFogLUT();
 
     /// Sync the procedural texture noise configuration to match the PICA register
     void SyncProcTexNoise();
 
-    /// Sync the procedural texture lookup tables
-    void SyncProcTexNoiseLUT();
-    void SyncProcTexColorMap();
-    void SyncProcTexAlphaMap();
-    void SyncProcTexLUT();
-    void SyncProcTexDiffLUT();
+    /// Sync the procedural texture bias configuration to match the PICA register
+    void SyncProcTexBias();
 
     /// Syncs the alpha test states to match the PICA register
     void SyncAlphaTest();
@@ -231,9 +186,6 @@ private:
     /// Syncs the lighting global ambient color to match the PICA register
     void SyncGlobalAmbient();
 
-    /// Syncs the lighting lookup tables
-    void SyncLightingLUT(unsigned index);
-
     /// Syncs the specified light's specular 0 color to match the PICA register
     void SyncLightSpecular0(int light_index);
 
@@ -258,19 +210,56 @@ private:
     /// Syncs the specified light's distance attenuation scale to match the PICA register
     void SyncLightDistanceAttenuationScale(int light_index);
 
+    /// Syncs the shadow rendering bias to match the PICA register
+    void SyncShadowBias();
+
+    /// Syncs and uploads the lighting, fog and proctex LUTs
+    void SyncAndUploadLUTs();
+
+    /// Upload the uniform blocks to the uniform buffer object
+    void UploadUniforms(bool accelerate_draw, bool use_gs);
+
+    /// Generic draw function for DrawTriangles and AccelerateDrawBatch
+    bool Draw(bool accelerate, bool is_indexed);
+
+    /// Internal implementation for AccelerateDrawBatch
+    bool AccelerateDrawBatchInternal(bool is_indexed, bool use_gs);
+
+    struct VertexArrayInfo {
+        u32 vs_input_index_min;
+        u32 vs_input_index_max;
+        u32 vs_input_size;
+    };
+
+    /// Retrieve the range and the size of the input vertex
+    VertexArrayInfo AnalyzeVertexArray(bool is_indexed);
+
+    /// Setup vertex array for AccelerateDrawBatch
+    void SetupVertexArray(u8* array_ptr, GLintptr buffer_offset, GLuint vs_input_index_min,
+                          GLuint vs_input_index_max);
+
+    /// Setup vertex shader for AccelerateDrawBatch
+    bool SetupVertexShader();
+
+    /// Setup geometry shader for AccelerateDrawBatch
+    bool SetupGeometryShader();
+
+    bool is_amd;
+
     OpenGLState state;
 
     RasterizerCacheOpenGL res_cache;
 
+    EmuWindow& emu_window;
+
     std::vector<HardwareVertex> vertex_batch;
 
-    std::unordered_map<GLShader::PicaShaderConfig, std::unique_ptr<PicaShader>> shader_cache;
-    const PicaShader* current_shader = nullptr;
     bool shader_dirty;
 
     struct {
         UniformData data;
-        std::array<bool, Pica::LightingRegs::NumLightingSampler> lut_dirty;
+        std::array<bool, Pica::LightingRegs::NumLightingSampler> lighting_lut_dirty;
+        bool lighting_lut_dirty_any;
         bool fog_lut_dirty;
         bool proctex_noise_lut_dirty;
         bool proctex_color_map_dirty;
@@ -280,37 +269,41 @@ private:
         bool dirty;
     } uniform_block_data = {};
 
+    std::unique_ptr<ShaderProgramManager> shader_program_manager;
+
+    // They shall be big enough for about one frame.
+    static constexpr std::size_t VERTEX_BUFFER_SIZE = 32 * 1024 * 1024;
+    static constexpr std::size_t INDEX_BUFFER_SIZE = 1 * 1024 * 1024;
+    static constexpr std::size_t UNIFORM_BUFFER_SIZE = 2 * 1024 * 1024;
+    static constexpr std::size_t TEXTURE_BUFFER_SIZE = 1 * 1024 * 1024;
+
+    OGLVertexArray sw_vao; // VAO for software shader draw
+    OGLVertexArray hw_vao; // VAO for hardware shader / accelerate draw
+    std::array<bool, 16> hw_vao_enabled_attributes{};
+
     std::array<SamplerInfo, 3> texture_samplers;
-    OGLVertexArray vertex_array;
-    OGLBuffer vertex_buffer;
-    OGLBuffer uniform_buffer;
+    OGLStreamBuffer vertex_buffer;
+    OGLStreamBuffer uniform_buffer;
+    OGLStreamBuffer index_buffer;
+    OGLStreamBuffer texture_buffer;
     OGLFramebuffer framebuffer;
+    GLint uniform_buffer_alignment;
+    std::size_t uniform_size_aligned_vs;
+    std::size_t uniform_size_aligned_gs;
+    std::size_t uniform_size_aligned_fs;
 
-    OGLBuffer lighting_lut_buffer;
-    OGLTexture lighting_lut;
+    SamplerInfo texture_cube_sampler;
+
+    OGLTexture texture_buffer_lut_rg;
+    OGLTexture texture_buffer_lut_rgba;
+
     std::array<std::array<GLvec2, 256>, Pica::LightingRegs::NumLightingSampler> lighting_lut_data{};
-
-    OGLBuffer fog_lut_buffer;
-    OGLTexture fog_lut;
     std::array<GLvec2, 128> fog_lut_data{};
-
-    OGLBuffer proctex_noise_lut_buffer;
-    OGLTexture proctex_noise_lut;
     std::array<GLvec2, 128> proctex_noise_lut_data{};
-
-    OGLBuffer proctex_color_map_buffer;
-    OGLTexture proctex_color_map;
     std::array<GLvec2, 128> proctex_color_map_data{};
-
-    OGLBuffer proctex_alpha_map_buffer;
-    OGLTexture proctex_alpha_map;
     std::array<GLvec2, 128> proctex_alpha_map_data{};
-
-    OGLBuffer proctex_lut_buffer;
-    OGLTexture proctex_lut;
     std::array<GLvec4, 256> proctex_lut_data{};
-
-    OGLBuffer proctex_diff_lut_buffer;
-    OGLTexture proctex_diff_lut;
     std::array<GLvec4, 256> proctex_diff_lut_data{};
+
+    bool allow_shadow;
 };

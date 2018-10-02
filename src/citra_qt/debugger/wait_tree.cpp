@@ -5,6 +5,7 @@
 #include "citra_qt/debugger/wait_tree.h"
 #include "citra_qt/util/util.h"
 
+#include "common/assert.h"
 #include "core/hle/kernel/event.h"
 #include "core/hle/kernel/mutex.h"
 #include "core/hle/kernel/semaphore.h"
@@ -12,7 +13,7 @@
 #include "core/hle/kernel/timer.h"
 #include "core/hle/kernel/wait_object.h"
 
-WaitTreeItem::~WaitTreeItem() {}
+WaitTreeItem::~WaitTreeItem() = default;
 
 QColor WaitTreeItem::GetColor() const {
     return QColor(Qt::GlobalColor::black);
@@ -117,6 +118,8 @@ QString WaitTreeWaitObject::GetResetTypeQString(Kernel::ResetType reset_type) {
     case Kernel::ResetType::Pulse:
         return tr("pulse");
     }
+    UNREACHABLE();
+    return {};
 }
 
 WaitTreeObjectList::WaitTreeObjectList(
@@ -142,57 +145,61 @@ QString WaitTreeThread::GetText() const {
     const auto& thread = static_cast<const Kernel::Thread&>(object);
     QString status;
     switch (thread.status) {
-    case THREADSTATUS_RUNNING:
+    case Kernel::ThreadStatus::Running:
         status = tr("running");
         break;
-    case THREADSTATUS_READY:
+    case Kernel::ThreadStatus::Ready:
         status = tr("ready");
         break;
-    case THREADSTATUS_WAIT_ARB:
+    case Kernel::ThreadStatus::WaitArb:
         status = tr("waiting for address 0x%1").arg(thread.wait_address, 8, 16, QLatin1Char('0'));
         break;
-    case THREADSTATUS_WAIT_SLEEP:
+    case Kernel::ThreadStatus::WaitSleep:
         status = tr("sleeping");
         break;
-    case THREADSTATUS_WAIT_IPC:
+    case Kernel::ThreadStatus::WaitIPC:
         status = tr("waiting for IPC response");
         break;
-    case THREADSTATUS_WAIT_SYNCH_ALL:
-    case THREADSTATUS_WAIT_SYNCH_ANY:
+    case Kernel::ThreadStatus::WaitSynchAll:
+    case Kernel::ThreadStatus::WaitSynchAny:
         status = tr("waiting for objects");
         break;
-    case THREADSTATUS_DORMANT:
+    case Kernel::ThreadStatus::WaitHleEvent:
+        status = tr("waiting for HLE return");
+        break;
+    case Kernel::ThreadStatus::Dormant:
         status = tr("dormant");
         break;
-    case THREADSTATUS_DEAD:
+    case Kernel::ThreadStatus::Dead:
         status = tr("dead");
         break;
     }
     QString pc_info = tr(" PC = 0x%1 LR = 0x%2")
-                          .arg(thread.context.pc, 8, 16, QLatin1Char('0'))
-                          .arg(thread.context.lr, 8, 16, QLatin1Char('0'));
+                          .arg(thread.context->GetProgramCounter(), 8, 16, QLatin1Char('0'))
+                          .arg(thread.context->GetLinkRegister(), 8, 16, QLatin1Char('0'));
     return WaitTreeWaitObject::GetText() + pc_info + " (" + status + ") ";
 }
 
 QColor WaitTreeThread::GetColor() const {
     const auto& thread = static_cast<const Kernel::Thread&>(object);
     switch (thread.status) {
-    case THREADSTATUS_RUNNING:
+    case Kernel::ThreadStatus::Running:
         return QColor(Qt::GlobalColor::darkGreen);
-    case THREADSTATUS_READY:
+    case Kernel::ThreadStatus::Ready:
         return QColor(Qt::GlobalColor::darkBlue);
-    case THREADSTATUS_WAIT_ARB:
+    case Kernel::ThreadStatus::WaitArb:
         return QColor(Qt::GlobalColor::darkRed);
-    case THREADSTATUS_WAIT_SLEEP:
+    case Kernel::ThreadStatus::WaitSleep:
         return QColor(Qt::GlobalColor::darkYellow);
-    case THREADSTATUS_WAIT_IPC:
+    case Kernel::ThreadStatus::WaitIPC:
         return QColor(Qt::GlobalColor::darkCyan);
-    case THREADSTATUS_WAIT_SYNCH_ALL:
-    case THREADSTATUS_WAIT_SYNCH_ANY:
+    case Kernel::ThreadStatus::WaitSynchAll:
+    case Kernel::ThreadStatus::WaitSynchAny:
+    case Kernel::ThreadStatus::WaitHleEvent:
         return QColor(Qt::GlobalColor::red);
-    case THREADSTATUS_DORMANT:
+    case Kernel::ThreadStatus::Dormant:
         return QColor(Qt::GlobalColor::darkCyan);
-    case THREADSTATUS_DEAD:
+    case Kernel::ThreadStatus::Dead:
         return QColor(Qt::GlobalColor::gray);
     default:
         return WaitTreeItem::GetColor();
@@ -206,16 +213,16 @@ std::vector<std::unique_ptr<WaitTreeItem>> WaitTreeThread::GetChildren() const {
 
     QString processor;
     switch (thread.processor_id) {
-    case ThreadProcessorId::THREADPROCESSORID_DEFAULT:
+    case Kernel::ThreadProcessorId::ThreadProcessorIdDefault:
         processor = tr("default");
         break;
-    case ThreadProcessorId::THREADPROCESSORID_ALL:
+    case Kernel::ThreadProcessorId::ThreadProcessorIdAll:
         processor = tr("all");
         break;
-    case ThreadProcessorId::THREADPROCESSORID_0:
+    case Kernel::ThreadProcessorId::ThreadProcessorId0:
         processor = tr("AppCore");
         break;
-    case ThreadProcessorId::THREADPROCESSORID_1:
+    case Kernel::ThreadProcessorId::ThreadProcessorId1:
         processor = tr("SysCore");
         break;
     default:
@@ -236,8 +243,9 @@ std::vector<std::unique_ptr<WaitTreeItem>> WaitTreeThread::GetChildren() const {
     } else {
         list.push_back(std::make_unique<WaitTreeMutexList>(thread.held_mutexes));
     }
-    if (thread.status == THREADSTATUS_WAIT_SYNCH_ANY ||
-        thread.status == THREADSTATUS_WAIT_SYNCH_ALL) {
+    if (thread.status == Kernel::ThreadStatus::WaitSynchAny ||
+        thread.status == Kernel::ThreadStatus::WaitSynchAll ||
+        thread.status == Kernel::ThreadStatus::WaitHleEvent) {
         list.push_back(std::make_unique<WaitTreeObjectList>(thread.wait_objects,
                                                             thread.IsSleepingOnWaitAll()));
     }
@@ -252,7 +260,7 @@ std::vector<std::unique_ptr<WaitTreeItem>> WaitTreeEvent::GetChildren() const {
 
     list.push_back(std::make_unique<WaitTreeText>(
         tr("reset type = %1")
-            .arg(GetResetTypeQString(static_cast<const Kernel::Event&>(object).reset_type))));
+            .arg(GetResetTypeQString(static_cast<const Kernel::Event&>(object).GetResetType()))));
     return list;
 }
 
@@ -293,11 +301,11 @@ std::vector<std::unique_ptr<WaitTreeItem>> WaitTreeTimer::GetChildren() const {
     const auto& timer = static_cast<const Kernel::Timer&>(object);
 
     list.push_back(std::make_unique<WaitTreeText>(
-        tr("reset type = %1").arg(GetResetTypeQString(timer.reset_type))));
+        tr("reset type = %1").arg(GetResetTypeQString(timer.GetResetType()))));
     list.push_back(
-        std::make_unique<WaitTreeText>(tr("initial delay = %1").arg(timer.initial_delay)));
+        std::make_unique<WaitTreeText>(tr("initial delay = %1").arg(timer.GetInitialDelay())));
     list.push_back(
-        std::make_unique<WaitTreeText>(tr("interval delay = %1").arg(timer.interval_delay)));
+        std::make_unique<WaitTreeText>(tr("interval delay = %1").arg(timer.GetIntervalDelay())));
     return list;
 }
 

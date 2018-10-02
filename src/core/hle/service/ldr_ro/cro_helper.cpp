@@ -5,10 +5,11 @@
 #include "common/alignment.h"
 #include "common/logging/log.h"
 #include "common/scope_exit.h"
+#include "core/arm/arm_interface.h"
+#include "core/core.h"
 #include "core/hle/service/ldr_ro/cro_helper.h"
 
-namespace Service {
-namespace LDR {
+namespace Service::LDR {
 
 static const ResultCode ERROR_BUFFER_TOO_SMALL = // 0xE0E12C1F
     ResultCode(static_cast<ErrorDescription>(31), ErrorModule::RO, ErrorSummary::InvalidArgument,
@@ -23,18 +24,27 @@ const std::array<int, 17> CROHelper::ENTRY_SIZE{{
     1, // code
     1, // data
     1, // module name
-    sizeof(SegmentEntry), sizeof(ExportNamedSymbolEntry), sizeof(ExportIndexedSymbolEntry),
+    sizeof(SegmentEntry),
+    sizeof(ExportNamedSymbolEntry),
+    sizeof(ExportIndexedSymbolEntry),
     1, // export strings
-    sizeof(ExportTreeEntry), sizeof(ImportModuleEntry), sizeof(ExternalRelocationEntry),
-    sizeof(ImportNamedSymbolEntry), sizeof(ImportIndexedSymbolEntry),
+    sizeof(ExportTreeEntry),
+    sizeof(ImportModuleEntry),
+    sizeof(ExternalRelocationEntry),
+    sizeof(ImportNamedSymbolEntry),
+    sizeof(ImportIndexedSymbolEntry),
     sizeof(ImportAnonymousSymbolEntry),
     1, // import strings
-    sizeof(StaticAnonymousSymbolEntry), sizeof(InternalRelocationEntry),
+    sizeof(StaticAnonymousSymbolEntry),
+    sizeof(InternalRelocationEntry),
     sizeof(StaticRelocationEntry),
 }};
 
 const std::array<CROHelper::HeaderField, 4> CROHelper::FIX_BARRIERS{{
-    Fix0Barrier, Fix1Barrier, Fix2Barrier, Fix3Barrier,
+    Fix0Barrier,
+    Fix1Barrier,
+    Fix2Barrier,
+    Fix3Barrier,
 }};
 
 VAddr CROHelper::SegmentTagToAddress(SegmentTag segment_tag) const {
@@ -61,9 +71,11 @@ ResultCode CROHelper::ApplyRelocation(VAddr target_address, RelocationType reloc
     case RelocationType::AbsoluteAddress:
     case RelocationType::AbsoluteAddress2:
         Memory::Write32(target_address, symbol_address + addend);
+        Core::CPU().InvalidateCacheRange(target_address, sizeof(u32));
         break;
     case RelocationType::RelativeAddress:
         Memory::Write32(target_address, symbol_address + addend - target_future_address);
+        Core::CPU().InvalidateCacheRange(target_address, sizeof(u32));
         break;
     case RelocationType::ThumbBranch:
     case RelocationType::ArmBranch:
@@ -86,6 +98,7 @@ ResultCode CROHelper::ClearRelocation(VAddr target_address, RelocationType reloc
     case RelocationType::AbsoluteAddress2:
     case RelocationType::RelativeAddress:
         Memory::Write32(target_address, 0);
+        Core::CPU().InvalidateCacheRange(target_address, sizeof(u32));
         break;
     case RelocationType::ThumbBranch:
     case RelocationType::ArmBranch:
@@ -117,7 +130,7 @@ ResultCode CROHelper::ApplyRelocationBatch(VAddr batch, u32 symbol_address, bool
         ResultCode result = ApplyRelocation(relocation_target, relocation.type, relocation.addend,
                                             symbol_address, relocation_target);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying relocation %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying relocation {:08X}", result.raw);
             return result;
         }
 
@@ -204,12 +217,24 @@ ResultCode CROHelper::RebaseHeader(u32 cro_size) {
 
     // verifies that all offsets are in the correct order
     constexpr std::array<HeaderField, 18> OFFSET_ORDER = {{
-        CodeOffset, ModuleNameOffset, SegmentTableOffset, ExportNamedSymbolTableOffset,
-        ExportTreeTableOffset, ExportIndexedSymbolTableOffset, ExportStringsOffset,
-        ImportModuleTableOffset, ExternalRelocationTableOffset, ImportNamedSymbolTableOffset,
-        ImportIndexedSymbolTableOffset, ImportAnonymousSymbolTableOffset, ImportStringsOffset,
-        StaticAnonymousSymbolTableOffset, InternalRelocationTableOffset,
-        StaticRelocationTableOffset, DataOffset, FileSize,
+        CodeOffset,
+        ModuleNameOffset,
+        SegmentTableOffset,
+        ExportNamedSymbolTableOffset,
+        ExportTreeTableOffset,
+        ExportIndexedSymbolTableOffset,
+        ExportStringsOffset,
+        ImportModuleTableOffset,
+        ExternalRelocationTableOffset,
+        ImportNamedSymbolTableOffset,
+        ImportIndexedSymbolTableOffset,
+        ImportAnonymousSymbolTableOffset,
+        ImportStringsOffset,
+        StaticAnonymousSymbolTableOffset,
+        InternalRelocationTableOffset,
+        StaticRelocationTableOffset,
+        DataOffset,
+        FileSize,
     }};
 
     u32 prev_offset = GetField(OFFSET_ORDER[0]);
@@ -467,7 +492,7 @@ ResultCode CROHelper::ResetExternalRelocations() {
         ResultCode result = ApplyRelocation(relocation_target, relocation.type, relocation.addend,
                                             unresolved_symbol, relocation_target);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying relocation %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying relocation {:08X}", result.raw);
             return result;
         }
 
@@ -499,7 +524,7 @@ ResultCode CROHelper::ClearExternalRelocations() {
 
         ResultCode result = ClearRelocation(relocation_target, relocation.type);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error clearing relocation %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error clearing relocation {:08X}", result.raw);
             return result;
         }
 
@@ -524,7 +549,7 @@ ResultCode CROHelper::ApplyStaticAnonymousSymbolToCRS(VAddr crs_address) {
 
     CROHelper crs(crs_address);
     u32 offset_export_num = GetField(StaticAnonymousSymbolNum);
-    LOG_INFO(Service_LDR, "CRO \"%s\" exports %d static anonymous symbols", ModuleName().data(),
+    LOG_INFO(Service_LDR, "CRO \"{}\" exports {} static anonymous symbols", ModuleName(),
              offset_export_num);
     for (u32 i = 0; i < offset_export_num; ++i) {
         StaticAnonymousSymbolEntry entry;
@@ -537,11 +562,11 @@ ResultCode CROHelper::ApplyStaticAnonymousSymbolToCRS(VAddr crs_address) {
         }
 
         u32 symbol_address = SegmentTagToAddress(entry.symbol_position);
-        LOG_TRACE(Service_LDR, "CRO \"%s\" exports 0x%08X to the static module",
-                  ModuleName().data(), symbol_address);
+        LOG_TRACE(Service_LDR, "CRO \"{}\" exports 0x{:08X} to the static module", ModuleName(),
+                  symbol_address);
         ResultCode result = crs.ApplyRelocationBatch(batch_address, symbol_address);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying relocation batch %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}", result.raw);
             return result;
         }
     }
@@ -577,12 +602,12 @@ ResultCode CROHelper::ApplyInternalRelocations(u32 old_data_segment_address) {
 
         SegmentEntry symbol_segment;
         GetEntry(relocation.symbol_segment, symbol_segment);
-        LOG_TRACE(Service_LDR, "Internally relocates 0x%08X with 0x%08X", target_address,
+        LOG_TRACE(Service_LDR, "Internally relocates 0x{:08X} with 0x{:08X}", target_address,
                   symbol_segment.offset);
         ResultCode result = ApplyRelocation(target_address, relocation.type, relocation.addend,
                                             symbol_segment.offset, target_addressB);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying relocation %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying relocation {:08X}", result.raw);
             return result;
         }
     }
@@ -602,7 +627,7 @@ ResultCode CROHelper::ClearInternalRelocations() {
 
         ResultCode result = ClearRelocation(target_address, relocation.type);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error clearing relocation %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error clearing relocation {:08X}", result.raw);
             return result;
         }
     }
@@ -738,13 +763,12 @@ ResultCode CROHelper::ApplyImportNamedSymbol(VAddr crs_address) {
                     u32 symbol_address = source.FindExportNamedSymbol(symbol_name);
 
                     if (symbol_address != 0) {
-                        LOG_TRACE(Service_LDR, "CRO \"%s\" imports \"%s\" from \"%s\"",
-                                  ModuleName().data(), symbol_name.data(),
-                                  source.ModuleName().data());
+                        LOG_TRACE(Service_LDR, "CRO \"{}\" imports \"{}\" from \"{}\"",
+                                  ModuleName(), symbol_name, source.ModuleName());
 
                         ResultCode result = ApplyRelocationBatch(relocation_addr, symbol_address);
                         if (result.IsError()) {
-                            LOG_ERROR(Service_LDR, "Error applying relocation batch %08X",
+                            LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}",
                                       result.raw);
                             return result;
                         }
@@ -775,7 +799,7 @@ ResultCode CROHelper::ResetImportNamedSymbol() {
 
         ResultCode result = ApplyRelocationBatch(relocation_addr, unresolved_symbol, true);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error reseting relocation batch %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error reseting relocation batch {:08X}", result.raw);
             return result;
         }
     }
@@ -795,7 +819,7 @@ ResultCode CROHelper::ResetImportIndexedSymbol() {
 
         ResultCode result = ApplyRelocationBatch(relocation_addr, unresolved_symbol, true);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error reseting relocation batch %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error reseting relocation batch {:08X}", result.raw);
             return result;
         }
     }
@@ -815,7 +839,7 @@ ResultCode CROHelper::ResetImportAnonymousSymbol() {
 
         ResultCode result = ApplyRelocationBatch(relocation_addr, unresolved_symbol, true);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error reseting relocation batch %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error reseting relocation batch {:08X}", result.raw);
             return result;
         }
     }
@@ -834,36 +858,34 @@ ResultCode CROHelper::ApplyModuleImport(VAddr crs_address) {
         ResultCode result =
             ForEachAutoLinkCRO(crs_address, [&](CROHelper source) -> ResultVal<bool> {
                 if (want_cro_name == source.ModuleName()) {
-                    LOG_INFO(Service_LDR, "CRO \"%s\" imports %d indexed symbols from \"%s\"",
-                             ModuleName().data(), entry.import_indexed_symbol_num,
-                             source.ModuleName().data());
+                    LOG_INFO(Service_LDR, "CRO \"{}\" imports {} indexed symbols from \"{}\"",
+                             ModuleName(), entry.import_indexed_symbol_num, source.ModuleName());
                     for (u32 j = 0; j < entry.import_indexed_symbol_num; ++j) {
                         ImportIndexedSymbolEntry im;
                         entry.GetImportIndexedSymbolEntry(j, im);
                         ExportIndexedSymbolEntry ex;
                         source.GetEntry(im.index, ex);
                         u32 symbol_address = source.SegmentTagToAddress(ex.symbol_position);
-                        LOG_TRACE(Service_LDR, "    Imports 0x%08X", symbol_address);
+                        LOG_TRACE(Service_LDR, "    Imports 0x{:08X}", symbol_address);
                         ResultCode result =
                             ApplyRelocationBatch(im.relocation_batch_offset, symbol_address);
                         if (result.IsError()) {
-                            LOG_ERROR(Service_LDR, "Error applying relocation batch %08X",
+                            LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}",
                                       result.raw);
                             return result;
                         }
                     }
-                    LOG_INFO(Service_LDR, "CRO \"%s\" imports %d anonymous symbols from \"%s\"",
-                             ModuleName().data(), entry.import_anonymous_symbol_num,
-                             source.ModuleName().data());
+                    LOG_INFO(Service_LDR, "CRO \"{}\" imports {} anonymous symbols from \"{}\"",
+                             ModuleName(), entry.import_anonymous_symbol_num, source.ModuleName());
                     for (u32 j = 0; j < entry.import_anonymous_symbol_num; ++j) {
                         ImportAnonymousSymbolEntry im;
                         entry.GetImportAnonymousSymbolEntry(j, im);
                         u32 symbol_address = source.SegmentTagToAddress(im.symbol_position);
-                        LOG_TRACE(Service_LDR, "    Imports 0x%08X", symbol_address);
+                        LOG_TRACE(Service_LDR, "    Imports 0x{:08X}", symbol_address);
                         ResultCode result =
                             ApplyRelocationBatch(im.relocation_batch_offset, symbol_address);
                         if (result.IsError()) {
-                            LOG_ERROR(Service_LDR, "Error applying relocation batch %08X",
+                            LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}",
                                       result.raw);
                             return result;
                         }
@@ -880,8 +902,8 @@ ResultCode CROHelper::ApplyModuleImport(VAddr crs_address) {
 }
 
 ResultCode CROHelper::ApplyExportNamedSymbol(CROHelper target) {
-    LOG_DEBUG(Service_LDR, "CRO \"%s\" exports named symbols to \"%s\"", ModuleName().data(),
-              target.ModuleName().data());
+    LOG_DEBUG(Service_LDR, "CRO \"{}\" exports named symbols to \"{}\"", ModuleName(),
+              target.ModuleName());
     u32 target_import_strings_size = target.GetField(ImportStringsSize);
     u32 target_symbol_import_num = target.GetField(ImportNamedSymbolNum);
     for (u32 i = 0; i < target_symbol_import_num; ++i) {
@@ -896,10 +918,10 @@ ResultCode CROHelper::ApplyExportNamedSymbol(CROHelper target) {
                 Memory::ReadCString(entry.name_offset, target_import_strings_size);
             u32 symbol_address = FindExportNamedSymbol(symbol_name);
             if (symbol_address != 0) {
-                LOG_TRACE(Service_LDR, "    exports symbol \"%s\"", symbol_name.data());
+                LOG_TRACE(Service_LDR, "    exports symbol \"{}\"", symbol_name);
                 ResultCode result = target.ApplyRelocationBatch(relocation_addr, symbol_address);
                 if (result.IsError()) {
-                    LOG_ERROR(Service_LDR, "Error applying relocation batch %08X", result.raw);
+                    LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}", result.raw);
                     return result;
                 }
             }
@@ -909,8 +931,8 @@ ResultCode CROHelper::ApplyExportNamedSymbol(CROHelper target) {
 }
 
 ResultCode CROHelper::ResetExportNamedSymbol(CROHelper target) {
-    LOG_DEBUG(Service_LDR, "CRO \"%s\" unexports named symbols to \"%s\"", ModuleName().data(),
-              target.ModuleName().data());
+    LOG_DEBUG(Service_LDR, "CRO \"{}\" unexports named symbols to \"{}\"", ModuleName(),
+              target.ModuleName());
     u32 unresolved_symbol = target.GetOnUnresolvedAddress();
     u32 target_import_strings_size = target.GetField(ImportStringsSize);
     u32 target_symbol_import_num = target.GetField(ImportNamedSymbolNum);
@@ -926,11 +948,11 @@ ResultCode CROHelper::ResetExportNamedSymbol(CROHelper target) {
                 Memory::ReadCString(entry.name_offset, target_import_strings_size);
             u32 symbol_address = FindExportNamedSymbol(symbol_name);
             if (symbol_address != 0) {
-                LOG_TRACE(Service_LDR, "    unexports symbol \"%s\"", symbol_name.data());
+                LOG_TRACE(Service_LDR, "    unexports symbol \"{}\"", symbol_name);
                 ResultCode result =
                     target.ApplyRelocationBatch(relocation_addr, unresolved_symbol, true);
                 if (result.IsError()) {
-                    LOG_ERROR(Service_LDR, "Error applying relocation batch %08X", result.raw);
+                    LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}", result.raw);
                     return result;
                 }
             }
@@ -950,34 +972,34 @@ ResultCode CROHelper::ApplyModuleExport(CROHelper target) {
         if (Memory::ReadCString(entry.name_offset, target_import_string_size) != module_name)
             continue;
 
-        LOG_INFO(Service_LDR, "CRO \"%s\" exports %d indexed symbols to \"%s\"", module_name.data(),
-                 entry.import_indexed_symbol_num, target.ModuleName().data());
+        LOG_INFO(Service_LDR, "CRO \"{}\" exports {} indexed symbols to \"{}\"", module_name,
+                 entry.import_indexed_symbol_num, target.ModuleName());
         for (u32 j = 0; j < entry.import_indexed_symbol_num; ++j) {
             ImportIndexedSymbolEntry im;
             entry.GetImportIndexedSymbolEntry(j, im);
             ExportIndexedSymbolEntry ex;
             GetEntry(im.index, ex);
             u32 symbol_address = SegmentTagToAddress(ex.symbol_position);
-            LOG_TRACE(Service_LDR, "    exports symbol 0x%08X", symbol_address);
+            LOG_TRACE(Service_LDR, "    exports symbol 0x{:08X}", symbol_address);
             ResultCode result =
                 target.ApplyRelocationBatch(im.relocation_batch_offset, symbol_address);
             if (result.IsError()) {
-                LOG_ERROR(Service_LDR, "Error applying relocation batch %08X", result.raw);
+                LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}", result.raw);
                 return result;
             }
         }
 
-        LOG_INFO(Service_LDR, "CRO \"%s\" exports %d anonymous symbols to \"%s\"",
-                 module_name.data(), entry.import_anonymous_symbol_num, target.ModuleName().data());
+        LOG_INFO(Service_LDR, "CRO \"{}\" exports {} anonymous symbols to \"{}\"", module_name,
+                 entry.import_anonymous_symbol_num, target.ModuleName());
         for (u32 j = 0; j < entry.import_anonymous_symbol_num; ++j) {
             ImportAnonymousSymbolEntry im;
             entry.GetImportAnonymousSymbolEntry(j, im);
             u32 symbol_address = SegmentTagToAddress(im.symbol_position);
-            LOG_TRACE(Service_LDR, "    exports symbol 0x%08X", symbol_address);
+            LOG_TRACE(Service_LDR, "    exports symbol 0x{:08X}", symbol_address);
             ResultCode result =
                 target.ApplyRelocationBatch(im.relocation_batch_offset, symbol_address);
             if (result.IsError()) {
-                LOG_ERROR(Service_LDR, "Error applying relocation batch %08X", result.raw);
+                LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}", result.raw);
                 return result;
             }
         }
@@ -999,28 +1021,28 @@ ResultCode CROHelper::ResetModuleExport(CROHelper target) {
         if (Memory::ReadCString(entry.name_offset, target_import_string_size) != module_name)
             continue;
 
-        LOG_DEBUG(Service_LDR, "CRO \"%s\" unexports indexed symbols to \"%s\"", module_name.data(),
-                  target.ModuleName().data());
+        LOG_DEBUG(Service_LDR, "CRO \"{}\" unexports indexed symbols to \"{}\"", module_name,
+                  target.ModuleName());
         for (u32 j = 0; j < entry.import_indexed_symbol_num; ++j) {
             ImportIndexedSymbolEntry im;
             entry.GetImportIndexedSymbolEntry(j, im);
             ResultCode result =
                 target.ApplyRelocationBatch(im.relocation_batch_offset, unresolved_symbol, true);
             if (result.IsError()) {
-                LOG_ERROR(Service_LDR, "Error applying relocation batch %08X", result.raw);
+                LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}", result.raw);
                 return result;
             }
         }
 
-        LOG_DEBUG(Service_LDR, "CRO \"%s\" unexports anonymous symbols to \"%s\"",
-                  module_name.data(), target.ModuleName().data());
+        LOG_DEBUG(Service_LDR, "CRO \"{}\" unexports anonymous symbols to \"{}\"", module_name,
+                  target.ModuleName());
         for (u32 j = 0; j < entry.import_anonymous_symbol_num; ++j) {
             ImportAnonymousSymbolEntry im;
             entry.GetImportAnonymousSymbolEntry(j, im);
             ResultCode result =
                 target.ApplyRelocationBatch(im.relocation_batch_offset, unresolved_symbol, true);
             if (result.IsError()) {
-                LOG_ERROR(Service_LDR, "Error applying relocation batch %08X", result.raw);
+                LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}", result.raw);
                 return result;
             }
         }
@@ -1045,12 +1067,12 @@ ResultCode CROHelper::ApplyExitRelocations(VAddr crs_address) {
                     u32 symbol_address = source.FindExportNamedSymbol("nnroAeabiAtexit_");
 
                     if (symbol_address != 0) {
-                        LOG_DEBUG(Service_LDR, "CRO \"%s\" import exit function from \"%s\"",
-                                  ModuleName().data(), source.ModuleName().data());
+                        LOG_DEBUG(Service_LDR, "CRO \"{}\" import exit function from \"{}\"",
+                                  ModuleName(), source.ModuleName());
 
                         ResultCode result = ApplyRelocationBatch(relocation_addr, symbol_address);
                         if (result.IsError()) {
-                            LOG_ERROR(Service_LDR, "Error applying relocation batch %08X",
+                            LOG_ERROR(Service_LDR, "Error applying relocation batch {:08X}",
                                       result.raw);
                             return result;
                         }
@@ -1061,7 +1083,7 @@ ResultCode CROHelper::ApplyExitRelocations(VAddr crs_address) {
                     return MakeResult<bool>(true);
                 });
             if (result.IsError()) {
-                LOG_ERROR(Service_LDR, "Error applying exit relocation %08X", result.raw);
+                LOG_ERROR(Service_LDR, "Error applying exit relocation {:08X}", result.raw);
                 return result;
             }
         }
@@ -1092,13 +1114,13 @@ ResultCode CROHelper::Rebase(VAddr crs_address, u32 cro_size, VAddr data_segment
 
     ResultCode result = RebaseHeader(cro_size);
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error rebasing header %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error rebasing header {:08X}", result.raw);
         return result;
     }
 
     result = VerifyStringTableLength(GetField(ModuleNameOffset), GetField(ModuleNameSize));
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error verifying module name %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error verifying module name {:08X}", result.raw);
         return result;
     }
 
@@ -1107,7 +1129,7 @@ ResultCode CROHelper::Rebase(VAddr crs_address, u32 cro_size, VAddr data_segment
         auto result_val = RebaseSegmentTable(cro_size, data_segment_addresss, data_segment_size,
                                              bss_segment_address, bss_segment_size);
         if (result_val.Failed()) {
-            LOG_ERROR(Service_LDR, "Error rebasing segment table %08X", result_val.Code().raw);
+            LOG_ERROR(Service_LDR, "Error rebasing segment table {:08X}", result_val.Code().raw);
             return result_val.Code();
         }
         prev_data_segment_address = *result_val;
@@ -1115,76 +1137,76 @@ ResultCode CROHelper::Rebase(VAddr crs_address, u32 cro_size, VAddr data_segment
 
     result = RebaseExportNamedSymbolTable();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error rebasing symbol export table %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error rebasing symbol export table {:08X}", result.raw);
         return result;
     }
 
     result = VerifyExportTreeTable();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error verifying export tree %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error verifying export tree {:08X}", result.raw);
         return result;
     }
 
     result = VerifyStringTableLength(GetField(ExportStringsOffset), GetField(ExportStringsSize));
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error verifying export strings %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error verifying export strings {:08X}", result.raw);
         return result;
     }
 
     result = RebaseImportModuleTable();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error rebasing object table %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error rebasing object table {:08X}", result.raw);
         return result;
     }
 
     result = ResetExternalRelocations();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error resetting all external relocations %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error resetting all external relocations {:08X}", result.raw);
         return result;
     }
 
     result = RebaseImportNamedSymbolTable();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error rebasing symbol import table %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error rebasing symbol import table {:08X}", result.raw);
         return result;
     }
 
     result = RebaseImportIndexedSymbolTable();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error rebasing index import table %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error rebasing index import table {:08X}", result.raw);
         return result;
     }
 
     result = RebaseImportAnonymousSymbolTable();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error rebasing offset import table %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error rebasing offset import table {:08X}", result.raw);
         return result;
     }
 
     result = VerifyStringTableLength(GetField(ImportStringsOffset), GetField(ImportStringsSize));
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error verifying import strings %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error verifying import strings {:08X}", result.raw);
         return result;
     }
 
     if (!is_crs) {
         result = ApplyStaticAnonymousSymbolToCRS(crs_address);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying offset export to CRS %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying offset export to CRS {:08X}", result.raw);
             return result;
         }
     }
 
     result = ApplyInternalRelocations(prev_data_segment_address);
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error applying internal relocations %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error applying internal relocations {:08X}", result.raw);
         return result;
     }
 
     if (!is_crs) {
         result = ApplyExitRelocations(crs_address);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying exit relocations %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying exit relocations {:08X}", result.raw);
             return result;
         }
     }
@@ -1256,14 +1278,14 @@ ResultCode CROHelper::Link(VAddr crs_address, bool link_on_load_bug_fix) {
         // Imports named symbols from other modules
         result = ApplyImportNamedSymbol(crs_address);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying symbol import %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying symbol import {:08X}", result.raw);
             return result;
         }
 
         // Imports indexed and anonymous symbols from other modules
         result = ApplyModuleImport(crs_address);
         if (result.IsError()) {
-            LOG_ERROR(Service_LDR, "Error applying module import %08X", result.raw);
+            LOG_ERROR(Service_LDR, "Error applying module import {:08X}", result.raw);
             return result;
         }
     }
@@ -1281,7 +1303,7 @@ ResultCode CROHelper::Link(VAddr crs_address, bool link_on_load_bug_fix) {
         return MakeResult<bool>(true);
     });
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error applying export %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error applying export {:08X}", result.raw);
         return result;
     }
 
@@ -1293,21 +1315,21 @@ ResultCode CROHelper::Unlink(VAddr crs_address) {
     // Resets all imported named symbols
     ResultCode result = ResetImportNamedSymbol();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error resetting symbol import %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error resetting symbol import {:08X}", result.raw);
         return result;
     }
 
     // Resets all imported indexed symbols
     result = ResetImportIndexedSymbol();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error resetting indexed import %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error resetting indexed import {:08X}", result.raw);
         return result;
     }
 
     // Resets all imported anonymous symbols
     result = ResetImportAnonymousSymbol();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error resetting anonymous import %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error resetting anonymous import {:08X}", result.raw);
         return result;
     }
 
@@ -1325,7 +1347,7 @@ ResultCode CROHelper::Unlink(VAddr crs_address) {
         return MakeResult<bool>(true);
     });
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error resetting export %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error resetting export {:08X}", result.raw);
         return result;
     }
 
@@ -1335,13 +1357,13 @@ ResultCode CROHelper::Unlink(VAddr crs_address) {
 ResultCode CROHelper::ClearRelocations() {
     ResultCode result = ClearExternalRelocations();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error clearing external relocations %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error clearing external relocations {:08X}", result.raw);
         return result;
     }
 
     result = ClearInternalRelocations();
     if (result.IsError()) {
-        LOG_ERROR(Service_LDR, "Error clearing internal relocations %08X", result.raw);
+        LOG_ERROR(Service_LDR, "Error clearing internal relocations {:08X}", result.raw);
         return result;
     }
     return RESULT_SUCCESS;
@@ -1491,5 +1513,4 @@ std::tuple<VAddr, u32> CROHelper::GetExecutablePages() const {
     return std::make_tuple(0, 0);
 }
 
-} // namespace LDR
-} // namespace Service
+} // namespace Service::LDR
